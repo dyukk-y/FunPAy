@@ -352,6 +352,52 @@ class ResponseTemplatesSettings(BaseModel):
 # Корневой конфиг
 # ──────────────────────────────────────────────────────────────────────────────
 
+
+# ─── Тексты и цены лотов (форк: автообновление счётчика/даты, замены, цены) ───
+
+DEFAULT_COUNTER_TEMPLATE = (
+    "📅 Актуально на {date}, {time} МСК:\n"
+    "Мы уже успешно продали {count} рекламных размещений! 🚀"
+)
+
+
+class LotCounterRule(BaseModel):
+    """
+    «Живой» счётчик в тексте лотов: раз в неделю ставит свежую дату/время
+    и прибавляет к числу случайное значение от inc_min до inc_max.
+    В шаблоне: {date} — дата ДД.ММ.ГГГГ, {time} — ЧЧ:ММ, {count} — число.
+    """
+    enabled: bool = True
+    template: str = DEFAULT_COUNTER_TEMPLATE
+    count: Optional[int] = None           # None = взять из лотов при первом запуске
+    count_manual: bool = False            # число задали вручную — следующий запуск считает от него
+    inc_min: int = 3
+    inc_max: int = 10
+
+
+class LotReplaceRule(BaseModel):
+    """Замена текста «найти → заменить» во всех лотах."""
+    find: str
+    replace: str = ""
+    weekly: bool = True                   # True — применять при каждом автообновлении
+
+
+class LotTextsSettings(BaseModel):
+    """Автообновление текстов лотов по расписанию (время — МСК)."""
+    enabled: bool = False                 # еженедельный автозапуск
+    weekday: int = 0                      # 0 = понедельник … 6 = воскресенье
+    hour: int = 4
+    minute: int = 0
+    counter: LotCounterRule = Field(default_factory=LotCounterRule)
+    replaces: List[LotReplaceRule] = Field(default_factory=list)
+    extra_lot_ids: List[int] = Field(default_factory=list)    # лоты, которых нет в профиле (выключенные)
+    exclude_lot_ids: List[int] = Field(default_factory=list)  # эти лоты никогда не трогаем
+    delay_min_sec: float = 2.0            # пауза между сохранениями лотов (антибан)
+    delay_max_sec: float = 5.0
+    last_auto_run: str = ""               # ISO-время последнего автозапуска (МСК)
+    last_report: str = ""
+
+
 class Settings(BaseModel):
     """Корневая модель всех настроек бота."""
     version: str = "1.2.1"
@@ -395,6 +441,10 @@ class Settings(BaseModel):
     notification_style: NotificationStyleSettings = Field(default_factory=NotificationStyleSettings)
     response_templates: ResponseTemplatesSettings = Field(default_factory=ResponseTemplatesSettings)
     watermark: WatermarkSettings = Field(default_factory=WatermarkSettings)
+
+    # Форк: тексты/цены лотов и служебное
+    lot_texts: LotTextsSettings = Field(default_factory=LotTextsSettings)
+    env_applied: Dict[str, str] = Field(default_factory=dict)  # отпечатки применённых ENV (см. utils/env_config.py)
 
 
 class ConfigManager:

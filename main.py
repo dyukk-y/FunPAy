@@ -316,7 +316,7 @@ def _main_safe() -> None:
             BotCommand(command="profile", description="посмотреть статистику аккаунта"),
             BotCommand(command="balance", description="посмотреть баланс аккаунта"),
             BotCommand(command="restart", description="перезапустить бота"),
-            BotCommand(command="golden_key", description="изменить токен доступа"),
+            BotCommand(command="golden_key", description="обновить golden_key (токен FunPay)"),
             BotCommand(command="ban", description="добавить пользователя в чёрный список"),
             BotCommand(command="unban", description="удалить пользователя из чёрного списка"),
             BotCommand(command="black_list", description="показать чёрный список"),
@@ -339,6 +339,8 @@ def _main_safe() -> None:
             BotCommand(command="audit", description="журнал действий"),
             BotCommand(command="export_settings", description="скачать бэкап настроек"),
             BotCommand(command="gen_desc", description="сгенерировать описание лота через ИИ"),
+            BotCommand(command="lots", description="тексты и цены лотов (автообновление)"),
+            BotCommand(command="price", description="быстро поменять цену: /price ID 150"),
         ]
 
         # ─── Запуск фоновых сервисов ─────────────────────────────────────────
@@ -359,6 +361,8 @@ def _main_safe() -> None:
             import modules.notifications       # noqa: F401
             import modules.analytics           # noqa: F401
 
+            from modules.lot_texts import lot_texts_scheduler
+            await lot_texts_scheduler.start()
             await online_keeper.start()
             await auto_lift.start()
             await ai_assistant.start()
@@ -371,6 +375,11 @@ def _main_safe() -> None:
             fp = config_manager.settings.funpay
             if not fp.accounts and not fp.golden_key:
                 logger.info("FunPay не настроен — введите golden_key в Telegram-боте.")
+                try:
+                    from bot.handlers.golden_key import notify_funpay_down
+                    await notify_funpay_down("golden_key ещё не задан.")
+                except Exception as e:
+                    logger.debug(f"notify_funpay_down: {e}")
                 return
             if not FUNPAY_AVAILABLE:
                 logger.warning("FunPayAPI не установлена. pip install FunPayAPI")
@@ -386,6 +395,11 @@ def _main_safe() -> None:
                 logger.info(f"Мультиаккаунт: подключено {ok_count} из {total} аккаунтов.")
             if not ok_count:
                 logger.error("Ни один FunPay-аккаунт не подключился.")
+                try:
+                    from bot.handlers.golden_key import notify_funpay_down
+                    await notify_funpay_down(results[0][2] if results else "")
+                except Exception as e:
+                    logger.debug(f"notify_funpay_down: {e}")
                 return
             loop = asyncio.get_event_loop()
 
@@ -495,8 +509,13 @@ def _main_safe() -> None:
             dp.message.middleware(TwoFAMiddleware())
             dp.callback_query.middleware(TwoFAMiddleware())
 
+            from bot.handlers.golden_key import router as golden_key_router
+            from bot.handlers.lot_texts import router as lot_texts_router
+
             dp.include_router(setup_router)
             dp.include_router(twofa_router)      # /login, /2fa_setup и т.д. — до auth
+            dp.include_router(golden_key_router) # 🔑 смена golden_key с телефона
+            dp.include_router(lot_texts_router)  # 📝 тексты и цены лотов
             dp.include_router(commands_router)
             dp.include_router(qr_router)         # быстрый ответ из TG — до menu/auth
             dp.include_router(menu_router)

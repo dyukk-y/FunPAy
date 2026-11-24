@@ -1680,14 +1680,12 @@ async def edit_text(msg: types.Message, state: FSMContext) -> None:
         ok, err = validate_golden_key(text)
         if not ok:
             await msg.answer(f"❌ {err}"); return
-        s().funpay.golden_key = text.strip()
-        config_manager.save()
-        # Переподключаемся
-        import asyncio as _aio
-        loop = _aio.get_event_loop()
-        success, m = await loop.run_in_executor(None, funpay_client.connect)
-        await msg.answer(f"{'✅' if success else '❌'} {m}\n/menu")
-        await state.clear(); return
+        # Форк: проверяем ключ входом на FunPay, сохраняем и перезапускаемся
+        # (простое переподключение оставляло старый Runner со старым ключом)
+        from bot.handlers.golden_key import _process_key
+        await state.clear()
+        await _process_key(msg, state, text.strip())
+        return
 
     if target == "__proxy__":
         # Принимаем любой формат: ip:port / login:pass@ip:port / login:pass:ip:port

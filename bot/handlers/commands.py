@@ -87,14 +87,8 @@ async def cmd_restart(msg: types.Message) -> None:
 
 # ─── /golden_key ─────────────────────────────────────────────────────────────
 
-@router.message(Command("golden_key"))
-async def cmd_golden_key(msg: types.Message, state: FSMContext) -> None:
-    if not is_admin(msg.from_user.id):
-        await msg.answer("⛔ Только для админов."); return
-    from bot.states import EditStates
-    await msg.answer("🔑 Отправьте новый <b>golden_key</b> (32 символа):")
-    await state.set_state(EditStates.editing_text)
-    await state.update_data(target="__golden_key__", back_to="menu:system")
+# Команда /golden_key перенесена в bot/handlers/golden_key.py
+# (проверка ключа, удаление сообщения с ключом, автоперезапуск).
 
 
 # ─── /ban /unban /black_list ─────────────────────────────────────────────────

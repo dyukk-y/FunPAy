@@ -20,12 +20,14 @@ def kb_unauthorized() -> InlineKeyboardMarkup:
 
 def kb_main_menu() -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
+    b.button(text="📝 Тексты и цены лотов", callback_data="lt:main")
+    b.button(text="🔑 Обновить golden_key", callback_data="gk:ask")
     b.button(text="⚙️ Основные модули", callback_data="menu:core")
     b.button(text="🤖 Автоматизация", callback_data="menu:automation")
     b.button(text="📊 Управление и Аналитика", callback_data="menu:analytics")
     b.button(text="🔧 Система и Конфиги", callback_data="menu:system")
     b.button(text="🚪 Выйти", callback_data="menu:exit")
-    b.adjust(1)
+    b.adjust(1, 1, 2, 2, 1)
     return b.as_markup()
 
 

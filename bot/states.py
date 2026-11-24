@@ -27,3 +27,25 @@ class EditStates(StatesGroup):
     editing_blacklist_nick = State()
     editing_ai_instruction = State()
     editing_ai_key = State()
+
+
+class GoldenKeyStates(StatesGroup):
+    """Быстрая смена golden_key с телефона."""
+    waiting_key = State()
+    confirm = State()
+
+
+class LotTextStates(StatesGroup):
+    """Тексты и цены лотов."""
+    count = State()
+    inc = State()
+    template = State()
+    time = State()
+    extra_ids = State()
+    exclude_ids = State()
+    rep_find = State()
+    rep_to = State()
+    price_ids = State()
+    price_word = State()
+    price_op = State()
+    confirm = State()

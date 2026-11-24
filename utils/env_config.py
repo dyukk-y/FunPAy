@@ -14,11 +14,17 @@
                        не стирается при передеплое; см. prepare_data_dir)
     UPDATE_REPO      — owner/repo для команды /update (по умолчанию твой форк)
 
-Если переменная задана — она ПОБЕЖДАЕТ значение из data/config.json при каждом старте.
-Если не задана — используется то, что сохранено в конфиге (например, через меню бота).
+Как применяются значения:
+  • переменная применяется, когда её значение НОВОЕ (поменяли в панели хостинга
+    или конфиг создан с нуля). Бот запоминает «отпечаток» применённого значения;
+  • если потом поменять то же самое через Telegram (например, прислать боту новый
+    golden_key с телефона) — оно НЕ будет затёрто старым значением из панели при
+    перезапуске. Затрёт только если в панели вписать другое значение;
+  • если переменная не задана — используется то, что сохранено в конфиге.
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import shutil
 from pathlib import Path
@@ -98,17 +104,31 @@ def apply_env_overrides(logger=None) -> bool:
     fp = s.funpay
     changed = False
 
+    applied = s.env_applied
+
+    def fresh(key: str, value: str) -> bool:
+        """True, если значение переменной key ещё не применялось (новое)."""
+        if not value:
+            return False
+        fp_ = hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
+        if applied.get(key) == fp_:
+            return False
+        applied[key] = fp_
+        return True
+
     token = _env("BOT_TOKEN", "TELEGRAM_TOKEN", "TOKEN")
-    if token and token != tg.token:
-        tg.token = token
+    if fresh("BOT_TOKEN", token) or (token and not tg.token):
+        if token != tg.token:
+            tg.token = token
+            log("[env] Токен Telegram взят из BOT_TOKEN")
         changed = True
-        log("[env] Токен Telegram взят из BOT_TOKEN")
 
     pwd = _env("ADMIN_PASSWORD")
-    if pwd and not verify_password(pwd, tg.admin_password):
-        tg.admin_password = hash_password(pwd)
+    if fresh("ADMIN_PASSWORD", pwd) or (pwd and not tg.admin_password):
+        if not verify_password(pwd, tg.admin_password):
+            tg.admin_password = hash_password(pwd)
+            log("[env] Пароль админа взят из ADMIN_PASSWORD")
         changed = True
-        log("[env] Пароль админа взят из ADMIN_PASSWORD")
 
     ids = _parse_ids(_env("ADMIN_IDS", "ADMIN_ID"))
     for i in ids:
@@ -118,25 +138,28 @@ def apply_env_overrides(logger=None) -> bool:
             log(f"[env] Добавлен админ из ADMIN_IDS: {i}")
 
     proxy = _env("FUNPAY_PROXY", "PROXY")
-    if proxy and proxy != fp.proxy:
-        fp.proxy = proxy
+    if fresh("FUNPAY_PROXY", proxy):
+        if proxy != fp.proxy:
+            fp.proxy = proxy
+            log("[env] Прокси взят из FUNPAY_PROXY")
         changed = True
-        log("[env] Прокси взят из FUNPAY_PROXY")
 
     ua = _env("USER_AGENT")
-    if ua and ua != fp.user_agent:
-        fp.user_agent = ua
+    if fresh("USER_AGENT", ua):
+        if ua != fp.user_agent:
+            fp.user_agent = ua
+            log("[env] User-Agent взят из USER_AGENT")
         changed = True
-        log("[env] User-Agent взят из USER_AGENT")
     if not fp.user_agent or "python-requests" in fp.user_agent:
         fp.user_agent = DEFAULT_USER_AGENT
         changed = True
 
     gk = _env("GOLDEN_KEY", "FUNPAY_GOLDEN_KEY")
-    if gk and gk != fp.golden_key:
-        fp.golden_key = gk
+    if fresh("GOLDEN_KEY", gk) or (gk and not fp.golden_key):
+        if gk != fp.golden_key:
+            fp.golden_key = gk
+            log("[env] golden_key взят из GOLDEN_KEY")
         changed = True
-        log("[env] golden_key взят из GOLDEN_KEY")
     if fp.golden_key and not fp.accounts:
         fp.accounts = [FunPayAccountSettings(
             golden_key=fp.golden_key,
@@ -147,7 +170,7 @@ def apply_env_overrides(logger=None) -> bool:
         changed = True
 
     repo = _env("UPDATE_REPO")
-    if repo and repo != s.update.repo:
+    if fresh("UPDATE_REPO", repo):
         s.update.repo = repo
         changed = True
 
