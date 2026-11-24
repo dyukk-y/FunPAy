@@ -1,0 +1,12 @@
+.git
+.github
+venv
+.venv
+__pycache__
+*.pyc
+data/config.json
+data/logs
+data/*.db
+data/delivery_files
+.env
+*.bat

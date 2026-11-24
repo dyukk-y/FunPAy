@@ -345,7 +345,7 @@ async def cmd_sys(msg: types.Message) -> None:
 async def cmd_power_off(msg: types.Message) -> None:
     if not is_admin(msg.from_user.id):
         await msg.answer("⛔ Только для админов."); return
-    await msg.answer("🛑 Бот выключается. Чтобы запустить снова — выполните <code>python main.py</code> на сервере.")
+    await msg.answer("🛑 Бот выключается. Чтобы запустить снова — выполните <code>python main.py</code> на сервере (на хостинге — нажмите «Перезапустить» в панели).")
     logger.warning(f"Бот выключен админом {msg.from_user.id}")
     from core.funpay_client import accounts_manager
     accounts_manager.stop_all()

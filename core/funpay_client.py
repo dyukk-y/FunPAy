@@ -316,6 +316,7 @@ class FunPayClient:
             self.runner.loop()
         except Exception as e:
             logger.exception(f"runner.loop упал: {e}")
+        self._thread_died("FunPayRunnerLoop")
 
     def _listen_loop_thread(self) -> None:
         """
@@ -358,6 +359,25 @@ class FunPayClient:
                     logger.warning(f"⚠️ Главный asyncio-цикл не работает! event {ev_type_name} потерян")
         except Exception as e:
             logger.exception(f"Listen-цикл упал: {e}")
+        self._thread_died("FunPayListen")
+
+    def _thread_died(self, name: str) -> None:
+        """
+        Сторожевой таймер: если поток FunPay завершился, а бот при этом НЕ
+        останавливали — FunPay больше не обрабатывается (заказы, сообщения),
+        хотя Telegram-меню живо. Тихо так висеть хуже, чем перезапуститься:
+        выходим с кодом 1, сторож в main.py поднимет бота заново.
+        """
+        if not self._running:
+            return
+        logger.critical(f"Поток {name} неожиданно остановился — перезапускаю бота")
+        try:
+            import logging
+            logging.shutdown()
+        except Exception:
+            pass
+        import os as _os
+        _os._exit(1)
 
     async def _dispatch(self, ev: Any) -> None:
         """

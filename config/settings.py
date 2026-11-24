@@ -260,7 +260,7 @@ class AISettings(BaseModel):
 class UpdateSettings(BaseModel):
     """Обновление бота с GitHub (команда /update)."""
     enabled: bool = True
-    repo: str = "PaltoProjects/PaltoFunPayBot"   # owner/repo на GitHub
+    repo: str = "dyukk-y/FunPAy"                 # owner/repo на GitHub (твой форк; оригинал — PaltoProjects/PaltoFunPayBot)
     branch: str = "main"                          # ветка для обновлений
 
 

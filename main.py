@@ -4,6 +4,7 @@ PaltoFunPayBot — точка входа.
 Если что-то падает на старте — пишет полный traceback в data/logs/startup_error.log
 и не закрывает консоль, а ждёт Enter, чтобы можно было прочитать ошибку.
 """
+import os
 import sys
 import traceback
 from pathlib import Path
@@ -43,10 +44,12 @@ def _show_error_and_wait(err_text: str) -> None:
     print(f"📄 Полный лог сохранён: {err_file}")
     print("=" * 70)
     print()
-    try:
-        input("Нажмите Enter, чтобы закрыть окно...")
-    except Exception:
-        pass
+    # На хостинге (нет консоли) не ждём Enter — просто выходим, сторож перезапустит
+    if sys.stdin is not None and sys.stdin.isatty() and not os.environ.get("FPB_CHILD"):
+        try:
+            input("Нажмите Enter, чтобы закрыть окно...")
+        except Exception:
+            pass
 
 
 def _main_safe() -> None:
@@ -404,10 +407,30 @@ def _main_safe() -> None:
         # ─── Главная корутина ────────────────────────────────────────────────
 
         async def main() -> None:
+            # Переменные окружения (BOT_TOKEN, ADMIN_PASSWORD, GOLDEN_KEY, ...) —
+            # для хостингов без консоли. См. utils/env_config.py и HOSTING.md
+            from utils.env_config import apply_env_overrides
+            apply_env_overrides(logger)
+
             cfg = config_manager.settings.telegram
             fcfg = config_manager.settings.funpay
             ua_broken = (not fcfg.user_agent) or "python-requests" in fcfg.user_agent
-            if not cfg.token or not cfg.admin_password or ua_broken:
+            if not cfg.token or not (cfg.admin_password or cfg.admin_ids) or ua_broken:
+                interactive = sys.stdin is not None and sys.stdin.isatty()
+                if not interactive:
+                    missing = []
+                    if not cfg.token:
+                        missing.append("BOT_TOKEN")
+                    if not (cfg.admin_password or cfg.admin_ids):
+                        missing.append("ADMIN_PASSWORD (или ADMIN_IDS)")
+                    print("\n" + "=" * 64)
+                    print(" ❌ Бот не настроен, а консоли для ввода нет (хостинг).")
+                    print(" Задайте переменные окружения в панели хостинга:")
+                    for m in missing:
+                        print(f"   • {m}")
+                    print(" Подробно — в файле HOSTING.md")
+                    print("=" * 64 + "\n")
+                    sys.exit(2)
                 cli_initial_setup()
 
             # Если задан прокси — Telegram-бот тоже идёт через него.
@@ -527,8 +550,9 @@ def _main_safe() -> None:
         except KeyboardInterrupt:
             print("\nОстановка по Ctrl+C.")
         except SystemExit:
-            # Если кто-то позвал /power_off → sys.exit
-            pass
+            # Если кто-то позвал /power_off → sys.exit; код выхода пробрасываем
+            # наружу — по нему сторож решает, перезапускать ли бота
+            raise
 
     except Exception:
         # Полный traceback с указанием файла и строки
@@ -537,5 +561,98 @@ def _main_safe() -> None:
         sys.exit(1)
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Сторож (supervisor): держит бота живым
+# ──────────────────────────────────────────────────────────────────────────────
+# python main.py запускает НЕ самого бота, а сторожа, который запускает бота
+# дочерним процессом и перезапускает его, если тот упал (ошибка, обрыв сети,
+# умер поток FunPay и т.п.). Коды выхода бота:
+#   0 — штатная остановка (/power_off, Ctrl+C) → сторож тоже выходит
+#   2 — бот не настроен (нет токена/пароля) → перезапуск бесполезен, выходим
+#   остальное — падение → перезапуск с паузой (5с, 10с, 20с … до 2 мин)
+# Отключить сторожа: переменная NO_SUPERVISOR=1 или флаг --no-supervisor.
+
+EXIT_OK = 0
+EXIT_NOT_CONFIGURED = 2
+
+
+def _supervise() -> None:
+    import signal
+    import subprocess
+    import time
+
+    from utils.env_config import prepare_data_dir
+    prepare_data_dir()
+
+    script = str(Path(__file__).resolve())
+    args = [sys.executable, "-u", script] + [a for a in sys.argv[1:] if a != "--no-supervisor"]
+    env = dict(os.environ, FPB_CHILD="1", PYTHONUNBUFFERED="1")
+
+    child = {"p": None}
+    stopping = {"v": False}
+
+    def _forward(signum, _frame):
+        stopping["v"] = True
+        p = child["p"]
+        if p is not None and p.poll() is None:
+            try:
+                p.send_signal(signum)
+            except Exception:
+                pass
+
+    for sig in (getattr(signal, "SIGTERM", None), getattr(signal, "SIGINT", None)):
+        if sig is not None:
+            try:
+                signal.signal(sig, _forward)
+            except Exception:
+                pass
+
+    delay = 5
+    while True:
+        started = time.time()
+        print(f"[supervisor] Запуск бота ({time.strftime('%Y-%m-%d %H:%M:%S')})", flush=True)
+        try:
+            child["p"] = subprocess.Popen(args, env=env, cwd=str(Path(__file__).resolve().parent))
+            code = child["p"].wait()
+        except KeyboardInterrupt:
+            stopping["v"] = True
+            try:
+                code = child["p"].wait(timeout=15) if child["p"] else 0
+            except Exception:
+                code = 0
+        except Exception as e:
+            print(f"[supervisor] Не удалось запустить бота: {e}", flush=True)
+            code = 1
+
+        if stopping["v"]:
+            print("[supervisor] Остановлено.", flush=True)
+            return
+        if code == EXIT_OK:
+            print("[supervisor] Бот остановлен штатно (код 0).", flush=True)
+            return
+        if code == EXIT_NOT_CONFIGURED:
+            print("[supervisor] Бот не настроен — перезапуск не поможет. См. HOSTING.md", flush=True)
+            sys.exit(EXIT_NOT_CONFIGURED)
+
+        # Бот проработал долго — значит это разовый сбой, начинаем паузы заново
+        if time.time() - started > 300:
+            delay = 5
+        print(f"[supervisor] ⚠️ Бот упал (код {code}). Перезапуск через {delay} с...", flush=True)
+        try:
+            time.sleep(delay)
+        except KeyboardInterrupt:
+            return
+        delay = min(delay * 2, 120)
+
+
 if __name__ == "__main__":
-    _main_safe()
+    _interactive_cli = any(a in sys.argv for a in (
+        "--setup-proxy", "--proxy", "--setup-ua", "--ua", "--user-agent",
+    ))
+    if (os.environ.get("FPB_CHILD") or os.environ.get("NO_SUPERVISOR")
+            or "--no-supervisor" in sys.argv or _interactive_cli):
+        from utils.env_config import prepare_data_dir
+        prepare_data_dir()
+        _main_safe()
+    else:
+        _supervise()

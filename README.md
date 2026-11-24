@@ -17,6 +17,10 @@
 
 </div>
 
+> 🍴 **Это форк** [PaltoProjects/PaltoFunPayBot](https://github.com/PaltoProjects/PaltoFunPayBot) (автор — [PaltoProjects](https://github.com/PaltoProjects)), доработанный для запуска на хостинге (BotHost и др.): настройка через переменные окружения, авто-перезапуск при падении, Dockerfile.
+>
+> 👉 **Как запустить на хостинге — [HOSTING.md](HOSTING.md)**
+
 ---
 
 ## ✨ Возможности

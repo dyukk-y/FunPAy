@@ -21,6 +21,7 @@ ENV/
 # ── Секреты и конфиги ─────────────────────────────────────────────────────────
 .env
 .env.*
+!.env.example
 data/config.json
 data/config.broken.json
 
