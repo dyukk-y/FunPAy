@@ -310,6 +310,13 @@ class OrderConfirmReplySettings(BaseModel):
     text: str = "Спасибо за подтверждение! Будем рады видеть вас снова 🙏"
 
 
+class OrderPaidReplySettings(BaseModel):
+    """Автоответ покупателю сразу после оплаты заказа (форк)."""
+    enabled: bool = True
+    text: str = "Присылайте текст рекламы на @theaugustine"
+    delay_sec: int = 3                    # пауза, чтобы ответ пришёл после системного сообщения FunPay
+
+
 class WatermarkSettings(BaseModel):
     """Водяной знак на исходящие сообщения бота."""
     enabled: bool = False
@@ -337,6 +344,7 @@ class NotificationStyleSettings(BaseModel):
     show_balance_after_order: bool = True
     compact_mode: bool = False
     show_own_messages: bool = False  # показывать свои сообщения в TG
+    short_paid_messages: bool = True  # системное «Покупатель оплатил заказ…» → только «🛒 Куплено: <лот>»
     muted_chats: Dict[str, float] = Field(default_factory=dict)  # chat_id -> до какого времени заглушён
 
 
@@ -466,6 +474,7 @@ class Settings(BaseModel):
     # Форк: тексты/цены лотов и служебное
     lot_texts: LotTextsSettings = Field(default_factory=LotTextsSettings)
     sales_brain: SalesBrainSettings = Field(default_factory=SalesBrainSettings)
+    order_paid_reply: OrderPaidReplySettings = Field(default_factory=OrderPaidReplySettings)
     env_applied: Dict[str, str] = Field(default_factory=dict)  # отпечатки применённых ENV (см. utils/env_config.py)
 
 

@@ -57,12 +57,13 @@ def kb_automation() -> InlineKeyboardMarkup:
     b.button(text="💬 Автоответчик", callback_data="auto:response")
     b.button(text="📦 Автовыдача", callback_data="auto:delivery")
     b.button(text="👋 Приветствия", callback_data="auto:greeting")
+    b.button(text="🛒 Ответ после покупки", callback_data="auto:paid")
     b.button(text="👍 Ответ на подтверждение", callback_data="auto:confirm")
     b.button(text="⭐ Ответ на отзывы", callback_data="auto:review")
     b.button(text="🧠 ИИ-помощник", callback_data="auto:ai")
     b.button(text="💸 Авто-вывод", callback_data="auto:withdraw")
     b.button(text="⬅️ Назад", callback_data="menu:main")
-    b.adjust(2, 2, 2, 1, 1)
+    b.adjust(2, 2, 2, 2, 1)
     return b.as_markup()
 
 
@@ -166,6 +167,19 @@ def kb_greeting(s) -> InlineKeyboardMarkup:
     b.button(text=f"⏱ Кулдаун: {s.auto_greeting.cooldown_days} дн.", callback_data="grt:cd")
     b.button(text="⬅️ Назад", callback_data="menu:automation")
     b.adjust(1, 1, 2, 1)
+    return b.as_markup()
+
+
+def kb_order_paid(s) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    p = s.order_paid_reply
+    b.button(text=f"{_e(p.enabled)} Включено", callback_data="paid:toggle")
+    b.button(text="✏️ Изменить текст", callback_data="paid:text")
+    b.button(text=f"⏱ Пауза: {p.delay_sec} сек", callback_data="paid:delay")
+    b.button(text=f"{_e(s.notification_style.short_paid_messages)} Короткое уведомление об оплате",
+             callback_data="paid:short")
+    b.button(text="⬅️ Назад", callback_data="menu:automation")
+    b.adjust(1)
     return b.as_markup()
 
 

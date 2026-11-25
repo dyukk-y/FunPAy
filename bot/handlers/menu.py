@@ -465,6 +465,57 @@ async def grt_cd(c: types.CallbackQuery, state: FSMContext) -> None:
 
 # ─── Ответ на подтверждение + просьба об отзыве ──────────────────────────────
 
+# ─── Ответ после покупки (форк) ──────────────────────────────────────────────
+
+def _paid_text() -> str:
+    p = s().order_paid_reply
+    return (
+        "🛒 <b>Ответ после покупки</b>\n\n"
+        "Сразу после оплаты заказа бот пишет покупателю в чат FunPay:\n"
+        f"<code>{html.escape(p.text)}</code>\n\n"
+        "Один раз на заказ — даже если бот перезапускался.\n\n"
+        "<b>Короткое уведомление об оплате</b> — вместо длинного системного сообщения FunPay "
+        "в Telegram приходит только «🛒 Куплено: название лота»."
+    )
+
+
+@router.callback_query(F.data == "auto:paid")
+async def auto_paid(c: types.CallbackQuery) -> None:
+    await c.message.edit_text(_paid_text(), reply_markup=kb.kb_order_paid(s()))
+    await c.answer()
+
+
+@router.callback_query(F.data.in_({"paid:toggle", "paid:short", "paid:delay"}))
+async def paid_toggle(c: types.CallbackQuery) -> None:
+    if not is_admin(c.from_user.id):
+        await c.answer("⛔ Только для админов", show_alert=True); return
+    if c.data == "paid:toggle":
+        s().order_paid_reply.enabled = not s().order_paid_reply.enabled
+    elif c.data == "paid:short":
+        st = s().notification_style
+        st.short_paid_messages = not st.short_paid_messages
+    else:
+        steps = [0, 3, 10, 30, 60]
+        cur = s().order_paid_reply.delay_sec
+        s().order_paid_reply.delay_sec = steps[(steps.index(cur) + 1) % len(steps)] if cur in steps else 3
+    config_manager.save()
+    await auto_paid(c)
+
+
+@router.callback_query(F.data == "paid:text")
+async def paid_text(c: types.CallbackQuery, state: FSMContext) -> None:
+    if not is_admin(c.from_user.id):
+        await c.answer("⛔ Только для админов", show_alert=True); return
+    await c.message.answer(
+        "✏️ Пришлите текст, который бот отправит покупателю сразу после оплаты." + _VARS_ORDER,
+        parse_mode="HTML",
+        reply_markup=kb.kb_cancel_edit("auto:paid"),
+    )
+    await state.set_state(EditStates.editing_text)
+    await state.update_data(target="order_paid_reply.text", back_to="auto:paid")
+    await c.answer()
+
+
 @router.callback_query(F.data == "auto:confirm")
 async def auto_confirm(c: types.CallbackQuery) -> None:
     cf = s().order_confirm_reply

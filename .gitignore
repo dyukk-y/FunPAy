@@ -32,6 +32,7 @@ data/ai_pending.json
 data/auto_withdraw.json
 data/auto_deactivated.json
 data/low_stock_notified.json
+data/paid_replied.json
 data/*.db
 data/*.sqlite
 data/*.db-shm

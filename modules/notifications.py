@@ -8,6 +8,8 @@
 """
 from __future__ import annotations
 
+import html as _html
+import re as _re
 import time
 from typing import Any, Dict, List, Optional
 
@@ -163,6 +165,13 @@ async def _send_with_photo(uid: int, text: str, photo_url: Optional[str],
                                          disable_web_page_preview=True, reply_markup=markup)
         except Exception as e2:
             logger.debug(f"notify fallback {uid}: {e2}")
+            # Последний шанс: без HTML-разметки — уведомление не должно теряться
+            try:
+                plain = _html.unescape(_re.sub(r"<[^>]+>", "", text))
+                await _bot_ref.send_message(uid, plain[:4096], disable_web_page_preview=True,
+                                             reply_markup=markup)
+            except Exception as e3:
+                logger.warning(f"notify: не удалось отправить уведомление {uid}: {e3}")
 
 
 async def _send_to_all(text: str, markup: Optional[InlineKeyboardMarkup] = None,
@@ -246,17 +255,28 @@ async def notify_message(message) -> None:
         role_emoji, role_name = _detect_sender_role(message)
 
         tag = _acc_tag(message)
-        if style.compact_mode:
-            header = f"{tag}{role_emoji} <b>{role_name}:</b> {body[:120]}"
+        # Текст покупателя экранируем: «<3» или «<b>» в сообщении ломали HTML,
+        # и Telegram отклонял уведомление целиком
+        role_name = _html.escape(str(role_name))
+        safe_body = _html.escape(body)
+        paid = None
+        if author_id == 0 and getattr(style, "short_paid_messages", True):
+            from utils.fp_system import parse_paid
+            paid = parse_paid(msg_text)
+        if paid:
+            # Системное «Покупатель … оплатил заказ … не забудьте…» → только лот
+            header = f"{tag}🛒 <b>Куплено:</b> {_html.escape(paid[0] or 'лот')}"
+        elif style.compact_mode:
+            header = f"{tag}{role_emoji} <b>{role_name}:</b> {safe_body[:120]}"
         else:
-            header = f"{tag}{role_emoji} <b>{role_name}:</b> {body or '(без текста)'}"
+            header = f"{tag}{role_emoji} <b>{role_name}:</b> {safe_body or '(без текста)'}"
 
         # Имена картинок ссылками (как Example.png на референсе)
         if images:
             links = []
             for i, img_url in enumerate(images[:5]):
                 fname = img_url.split("/")[-1].split("?")[0] or f"image_{i+1}.png"
-                links.append(f'<a href="{img_url}">{fname}</a>')
+                links.append(f'<a href="{_html.escape(img_url, quote=True)}">{_html.escape(fname)}</a>')
             header += "\n" + " ".join(links)
 
         markup = kb_message_actions(chat_id, chat_name, acc_index=client.index)
@@ -281,7 +301,7 @@ async def notify_new_order(order) -> None:
     if not config_manager.settings.notifications.new_orders:
         return
     style = config_manager.settings.notification_style
-    title    = getattr(order, "description", None) or getattr(order, "title", "?")
+    title    = _html.escape(str(getattr(order, "description", None) or getattr(order, "title", "?")))
     price    = getattr(order, "price", "?")
     buyer    = getattr(order, "buyer_username", None) or getattr(order, "buyer", "?")
     buyer_id = getattr(order, "buyer_id", None)
@@ -347,7 +367,7 @@ async def notify_review(review) -> None:
 async def notify_delivery(order, content: str) -> None:
     if not config_manager.settings.notifications.delivery_sent:
         return
-    snippet = content[:80] + ("..." if len(content) > 80 else "")
+    snippet = _html.escape(content[:80]) + ("..." if len(content) > 80 else "")
     text = (
         f"{_acc_tag(order)}{_e('📦 ')}<b>Товар выдан</b>\n"
         f"Заказ #{getattr(order, 'id', '?')}\n"
