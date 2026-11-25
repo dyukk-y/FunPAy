@@ -10,3 +10,5 @@ data/*.db
 data/delivery_files
 .env
 *.bat
+data/*.db-shm
+data/*.db-wal

@@ -49,3 +49,11 @@ class LotTextStates(StatesGroup):
     price_word = State()
     price_op = State()
     confirm = State()
+
+
+class SalesStates(StatesGroup):
+    """Анализ переписки и автопродажи."""
+    edit_answer = State()
+    add_question = State()
+    add_answer = State()
+    edit_pending = State()

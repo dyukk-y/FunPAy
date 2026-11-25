@@ -339,6 +339,7 @@ def _main_safe() -> None:
             BotCommand(command="audit", description="журнал действий"),
             BotCommand(command="export_settings", description="скачать бэкап настроек"),
             BotCommand(command="gen_desc", description="сгенерировать описание лота через ИИ"),
+            BotCommand(command="sales", description="анализ переписки и автопродажи"),
             BotCommand(command="lots", description="тексты и цены лотов (автообновление)"),
             BotCommand(command="price", description="быстро поменять цену: /price ID 150"),
         ]
@@ -360,6 +361,7 @@ def _main_safe() -> None:
             import modules.order_reactions     # noqa: F401
             import modules.notifications       # noqa: F401
             import modules.analytics           # noqa: F401
+            import modules.sales_brain         # noqa: F401  — анализ переписки и автопродажи
 
             from modules.lot_texts import lot_texts_scheduler
             await lot_texts_scheduler.start()
@@ -511,11 +513,13 @@ def _main_safe() -> None:
 
             from bot.handlers.golden_key import router as golden_key_router
             from bot.handlers.lot_texts import router as lot_texts_router
+            from bot.handlers.sales_brain import router as sales_brain_router
 
             dp.include_router(setup_router)
             dp.include_router(twofa_router)      # /login, /2fa_setup и т.д. — до auth
             dp.include_router(golden_key_router) # 🔑 смена golden_key с телефона
             dp.include_router(lot_texts_router)  # 📝 тексты и цены лотов
+            dp.include_router(sales_brain_router)  # 🧠 анализ переписки и автопродажи
             dp.include_router(commands_router)
             dp.include_router(qr_router)         # быстрый ответ из TG — до menu/auth
             dp.include_router(menu_router)

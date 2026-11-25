@@ -398,6 +398,27 @@ class LotTextsSettings(BaseModel):
     last_report: str = ""
 
 
+
+class SalesBrainSettings(BaseModel):
+    """
+    Анализ переписки и автопродажи (форк). Учитываются ТОЛЬКО чаты,
+    где первым написал покупатель.
+    """
+    collect: bool = True                  # запоминать переписку (локально, в data/sales_brain.db)
+    mode: str = "off"                     # off | suggest | auto
+    suggest_threshold: float = 0.45       # с какой похожести вопроса предлагать ответ
+    auto_threshold: float = 0.6           # с какой похожести отвечать самому
+    auto_delay_min: int = 15              # пауза перед автоответом, сек (успеть ответить самому)
+    auto_delay_max: int = 45
+    max_auto_per_chat: int = 3            # не больше N автоответов в одном чате за сутки
+    skip_if_active_min: int = 10          # не отвечать автоматически, если я сам писал в чат недавно
+    ai_suggest: bool = False              # если в базе нет ответа — подсказка от ИИ в моём стиле
+    ai_auto: bool = False                 # ИИ может отправлять ответ сам (рискованно)
+    history_chats_limit: int = 200        # сколько последних чатов изучать при импорте
+    min_cluster: int = 2                  # вопрос должен встретиться хотя бы N раз, чтобы попасть в базу
+    last_import: str = ""
+
+
 class Settings(BaseModel):
     """Корневая модель всех настроек бота."""
     version: str = "1.2.1"
@@ -444,6 +465,7 @@ class Settings(BaseModel):
 
     # Форк: тексты/цены лотов и служебное
     lot_texts: LotTextsSettings = Field(default_factory=LotTextsSettings)
+    sales_brain: SalesBrainSettings = Field(default_factory=SalesBrainSettings)
     env_applied: Dict[str, str] = Field(default_factory=dict)  # отпечатки применённых ENV (см. utils/env_config.py)
 
 

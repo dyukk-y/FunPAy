@@ -427,4 +427,10 @@ async def _send_to_funpay(chat_id: str, text: str,
     )
     if ok:
         logger.info(f"QuickReply → chat {cid}: {text[:50]}")
+        # 🧠 Анализ продаж: это ВАШ ручной ответ (не автоответ бота)
+        try:
+            from modules.sales_brain import note_manual
+            note_manual(client.index, cid, text)
+        except Exception:
+            pass
     return ok
