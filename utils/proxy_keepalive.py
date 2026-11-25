@@ -72,18 +72,30 @@ class ProxyKeepAlive:
 
             # Если разрыв >5 минут — уведомляем юзера
             if outage > 300 and self._fails_in_row >= 2:
+                import html as _html
                 from modules.notifications import _send_to_all
+                err = _html.escape(f"{type(e).__name__}: {str(e)[:200]}")
+                unauthorized = "Unauthorized" in type(e).__name__
                 try:
-                    await _send_to_all(
-                        f"⚠️ <b>Долгая потеря связи с FunPay</b>\n\n"
-                        f"Связь не восстанавливается уже <b>{int(outage // 60)} мин</b>.\n"
-                        f"Последняя ошибка: <code>{type(e).__name__}: {str(e)[:200]}</code>\n\n"
-                        f"💡 Возможные причины:\n"
-                        f"• Прокси перегружен или упал\n"
-                        f"• Интернет-соединение нестабильно\n"
-                        f"• FunPay временно недоступен\n\n"
-                        f"Бот сам пытается восстановиться."
-                    )
+                    if unauthorized:
+                        from bot.handlers.golden_key import _kb
+                        await _send_to_all(
+                            f"⚠️ <b>FunPay разлогинил аккаунт</b>\n\n"
+                            f"Уже <b>{int(outage // 60)} мин</b> FunPay не принимает golden_key.\n"
+                            f"Нужен новый ключ — нажмите кнопку и пришлите его.",
+                            _kb(("🔑 Обновить golden_key", "gk:ask")),
+                        )
+                    else:
+                        await _send_to_all(
+                            f"⚠️ <b>Долгая потеря связи с FunPay</b>\n\n"
+                            f"Связь не восстанавливается уже <b>{int(outage // 60)} мин</b>.\n"
+                            f"Последняя ошибка: <code>{err}</code>\n\n"
+                            f"💡 Возможные причины:\n"
+                            f"• Прокси перегружен или упал\n"
+                            f"• Интернет-соединение нестабильно\n"
+                            f"• FunPay временно недоступен\n\n"
+                            f"Бот сам пытается восстановиться."
+                        )
                 except Exception:
                     pass
                 # Сбрасываем счётчик чтобы не спамить

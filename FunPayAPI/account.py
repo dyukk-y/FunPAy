@@ -604,11 +604,31 @@ class Account:
         return types.LotPage(lot_id, self.get_subcategory(enums.SubCategoryTypes.COMMON, subcategory_id),
                              short_description, detailed_description, image_urls, seller_id, seller_username)
 
-    def get_balance(self, lot_id: int) -> types.Balance:
+    def _find_balance_lot_id(self) -> int:
+        """
+        FunPay показывает баланс только в форме покупки на странице ЧУЖОГО лота.
+        Берём случайный опубликованный лот другого продавца (как FunPay Cardinal).
+        """
+        subcats = list(self.get_sorted_subcategories().get(enums.SubCategoryTypes.COMMON, {}).keys())
+        random.shuffle(subcats)
+        for subcat_id in subcats[:5]:
+            try:
+                lots = self.get_subcategory_public_lots(enums.SubCategoryTypes.COMMON, subcat_id)
+            except exceptions.UnauthorizedError:
+                raise
+            except Exception:
+                continue
+            others = [l for l in lots if getattr(getattr(l, "seller", None), "id", None) != self.id]
+            if others:
+                return int(random.choice(others).id)
+        raise Exception("Не удалось найти лот для получения баланса.")
+
+    def get_balance(self, lot_id: int | None = None) -> types.Balance:
         """
         Получает информацию о балансе пользователя.
 
-        :param lot_id: ID лота, на котором проверять баланс.
+        :param lot_id: ID лота, на котором проверять баланс. Если не указан —
+            бот сам находит подходящий чужой лот и запоминает его.
         :type lot_id: :obj:`int`, опционально
 
         :return: информацию о балансе пользователя.
@@ -616,6 +636,28 @@ class Account:
         """
         if not self.is_initiated:
             raise exceptions.AccountNotInitiatedError()
+        if lot_id is None:
+            cached = getattr(self, "_balance_lot_id", None)
+            if cached:
+                try:
+                    return self.get_balance(cached)
+                except exceptions.UnauthorizedError:
+                    raise
+                except Exception:
+                    self._balance_lot_id = None  # лот удалили/сняли — ищем другой
+            last_error: Exception | None = None
+            for _ in range(3):
+                candidate = self._find_balance_lot_id()
+                try:
+                    balance = self.get_balance(candidate)
+                except exceptions.UnauthorizedError:
+                    raise
+                except Exception as e:  # на странице нет формы покупки — пробуем другой лот
+                    last_error = e
+                    continue
+                self._balance_lot_id = candidate
+                return balance
+            raise last_error or Exception("Не удалось получить баланс.")
         response = self.method("get", f"lots/offer?id={lot_id}", {"accept": "*/*"}, {}, raise_not_200=True)
         html_response = response.content.decode()
         parser = BeautifulSoup(html_response, "lxml")
@@ -627,6 +669,8 @@ class Account:
         self.__update_csrf_token(parser)
 
         balances = parser.find("select", {"name": "method"})
+        if balances is None:
+            raise Exception(f"На странице лота {lot_id} нет данных о балансе.")
         balance = types.Balance(float(balances["data-balance-total-rub"]), float(balances["data-balance-rub"]),
                                 float(balances["data-balance-total-usd"]), float(balances["data-balance-usd"]),
                                 float(balances["data-balance-total-eur"]), float(balances["data-balance-eur"]))
