@@ -5,6 +5,8 @@
 """
 from __future__ import annotations
 
+import asyncio
+
 from config.settings import config_manager
 from core.event_bus import Event, event_bus
 from core.funpay_client import accounts_manager
@@ -77,12 +79,11 @@ async def handle_review(review) -> None:
     # Ограничения FunPay: 999 символов, 10 строк. Превышение → ошибка API.
     text = _truncate_review_text(text)
 
+    # Ответ продавца на отзыв — тот же метод send_review (как в FunPay Cardinal).
+    # Раньше тут было stars=… — такого параметра нет, ответ не отправлялся никогда.
+    loop = asyncio.get_running_loop()
     try:
-        client.account.send_review(order_id, text, stars=stars)
+        await loop.run_in_executor(None, client.account.send_review, order_id, text)
         logger.info(f"review_reply → заказ {order_id} ({stars}★)")
     except Exception as e:
-        try:
-            client.account.send_review_reply(order_id, text)
-            logger.info(f"review_reply (legacy) → {order_id}")
-        except Exception as e2:
-            logger.warning(f"review_reply: {e} / {e2}")
+        logger.warning(f"review_reply ({order_id}): {e}")

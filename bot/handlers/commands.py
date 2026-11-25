@@ -193,7 +193,7 @@ async def handle_photo_upload(msg: types.Message, state: FSMContext) -> None:
         else:
             image_id = await loop.run_in_executor(
                 None,
-                lambda: funpay_client.account.upload_image(str(tmp_path), type="offer"),
+                lambda: funpay_client.account.upload_image(str(tmp_path), type_="offer"),
             )
         await msg.answer(f"✅ Загружено!\nimage_id: <code>{image_id}</code>")
     except Exception as e:
