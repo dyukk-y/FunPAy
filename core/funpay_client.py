@@ -70,6 +70,10 @@ except (TypeError, SyntaxError) as _e:
     FUNPAY_IMPORT_ERROR = str(_e)
 
 
+import re as _re_mod
+_PRIVATE_NODE_RX = _re_mod.compile(r"^users-\d+-\d+$")
+
+
 class FunPayClient:
     """
     Высокоуровневая обёртка над FunPayAPI — один клиент на один FunPay-аккаунт.
@@ -701,19 +705,23 @@ class FunPayClient:
         if not text or not str(text).strip():
             return False
 
-        # Нормализация chat_id: строка → int
-        try:
-            cid = int(chat_id)
-        except (TypeError, ValueError):
-            logger.debug(f"send_message: невалидный chat_id={chat_id!r}")
-            return False
+        # Нормализация chat_id: строка → int. У заказов FunPay chat_id —
+        # строка «users-<id>-<id>» (текстовое имя личного чата): раньше она
+        # отбрасывалась, и автовыдача / ответы на заказы молча не уходили.
+        # Такое имя FunPay принимает как адрес чата — передаём как есть.
+        if isinstance(chat_id, str) and _PRIVATE_NODE_RX.match(chat_id.strip()):
+            cid = chat_id.strip()
+        else:
+            try:
+                cid = int(chat_id)
+            except (TypeError, ValueError):
+                logger.warning(f"send_message: невалидный chat_id={chat_id!r} — сообщение не отправлено")
+                return False
 
-        # Невалидные chat_id (ноль и отрицательные — сентинелы для тестов).
-        # Порог 99999 был слишком агрессивным: реальные FunPay-чаты со старыми
-        # аккаунтами имеют низкие ID и блокировались. Теперь пропускаем только <= 0.
-        if cid <= 0:
-            logger.debug(f"send_message({cid}): невалидный/тестовый chat_id, пропуск")
-            return False
+            # Невалидные chat_id (ноль и отрицательные — сентинелы для тестов).
+            if cid <= 0:
+                logger.debug(f"send_message({cid}): невалидный/тестовый chat_id, пропуск")
+                return False
 
         # Водяной знак
         try:
@@ -727,6 +735,34 @@ class FunPayClient:
             if not self._send_chunk(cid, chunk, attempts):
                 return False
         return True
+
+    def order_chat_id(self, order) -> Any:
+        """
+        Числовой ID чата с покупателем заказа (как в FunPay Cardinal — по нику
+        в списке чатов). Если не нашли — «users-<id>-<id>», его FunPay тоже понимает.
+        Синхронный (может сделать запрос) — вызывать через run_in_executor.
+        """
+        raw = getattr(order, "chat_id", None) or getattr(order, "buyer_chat_id", None)
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            pass
+        buyer = getattr(order, "buyer_username", None)
+        if self.account is not None and buyer:
+            cache = self.__dict__.setdefault("_order_chat_cache", {})
+            if buyer in cache:
+                return cache[buyer]
+            try:
+                chat = self.account.get_chat_by_name(buyer, True)
+                if chat is not None and getattr(chat, "id", None):
+                    cache[buyer] = int(chat.id)
+                    return cache[buyer]
+            except Exception as e:
+                logger.debug(f"order_chat_id({buyer}): {e}")
+        return raw
+
+    async def order_chat_id_async(self, order) -> Any:
+        return await asyncio.get_running_loop().run_in_executor(None, self.order_chat_id, order)
 
     def _send_chunk(self, cid: int, text: str, attempts: int = 3) -> bool:
         """

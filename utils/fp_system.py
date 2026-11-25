@@ -26,3 +26,18 @@ def parse_paid(text: str) -> Optional[Tuple[str, str, str]]:
         return None
     lot = m.group("lot").strip().rstrip(".").strip()
     return lot, m.group("order"), m.group("buyer")
+
+
+_CONFIRMED_RX = re.compile(
+    r"(?:Покупатель|The buyer|Покупець|Администратор|The administrator)\s+(?P<buyer>\S+)\s+"
+    r"(?:подтвердил успешное выполнение заказа|has confirmed that order|підтвердив успішне виконання замовлення)\s+"
+    r"#(?P<order>[A-Z0-9]{8})"
+)
+
+
+def parse_confirmed(text: str) -> Optional[Tuple[str, str]]:
+    """«Покупатель X подтвердил успешное выполнение заказа #ID …» → (номер заказа, покупатель)."""
+    m = _CONFIRMED_RX.search(text or "")
+    if not m:
+        return None
+    return m.group("order"), m.group("buyer")

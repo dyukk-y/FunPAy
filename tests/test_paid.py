@@ -69,7 +69,11 @@ def paid(tmp_path, monkeypatch):
     saved = config_manager.settings.order_paid_reply
     config_manager.settings.order_paid_reply = OrderPaidReplySettings(delay_sec=0)
     out = []
-    client = NS(account=object(), send_message=lambda cid, text, attempts=3: out.append((cid, text)) or True)
+    async def resolve(order):
+        return order.chat_id
+
+    client = NS(account=object(), send_message=lambda cid, text, attempts=3: out.append((cid, text)) or True,
+                order_chat_id_async=resolve)
     monkeypatch.setattr(funpay_client.accounts_manager, "client_for", lambda o: client)
     yield orx, out, config_manager.settings.order_paid_reply
     config_manager.settings.order_paid_reply = saved

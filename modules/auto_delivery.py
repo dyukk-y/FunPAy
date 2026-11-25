@@ -454,7 +454,8 @@ async def handle_order_paid(order) -> None:
     client = accounts_manager.client_for(order)
 
     # ID чата
-    chat_id = getattr(order, "chat_id", None) or getattr(order, "buyer_chat_id", None)
+    # У заказа chat_id — «users-<id>-<id>»; находим настоящий ID чата
+    chat_id = await client.order_chat_id_async(order)
     amount = max(1, int(getattr(order, "amount", 1) or 1))
 
     if not chat_id:
