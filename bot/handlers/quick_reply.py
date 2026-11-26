@@ -13,6 +13,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import html
 from typing import Optional, Tuple
 
@@ -129,7 +130,7 @@ async def qr_info(c: CallbackQuery) -> None:
     if client.account:
         try:
             # Пробуем получить историю чата через API
-            chat = client.account.get_chat(int(chat_id))
+            chat = await asyncio.get_running_loop().run_in_executor(None, client.account.get_chat, int(chat_id))
             if chat:
                 buyer_name = getattr(chat, "name", None) or getattr(chat, "username", "?")
                 buyer_id   = getattr(chat, "id", None)

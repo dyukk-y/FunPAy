@@ -45,8 +45,8 @@ async def cmd_profile(msg: types.Message) -> None:
     if not funpay_client.account:
         await msg.answer("❌ Бот не подключён к FunPay.")
         return
-    bal = funpay_client.get_balance()
-    active = funpay_client.get_active_orders_count()
+    bal = await funpay_client.aget_balance()
+    active = await funpay_client.aget_active_orders_count()
     text = (
         f"👤 <b>Профиль FunPay</b>\n\n"
         f"Аккаунт: <b>{fp.username}</b>\n"
@@ -64,7 +64,7 @@ async def cmd_profile(msg: types.Message) -> None:
 async def cmd_balance(msg: types.Message) -> None:
     if not _ensure(msg):
         return
-    bal = funpay_client.get_balance()
+    bal = await funpay_client.aget_balance()
     await msg.answer(
         f"💰 <b>Баланс</b>\n\n"
         f"<code>{bal['rub']:.2f} ₽</code>\n"
@@ -81,8 +81,9 @@ async def cmd_restart(msg: types.Message) -> None:
         await msg.answer("⛔ Только для админов."); return
     await msg.answer("🔄 Перезапускаю бота...")
     logger.info(f"Перезапуск инициирован админом {msg.from_user.id}")
-    # Корректный рестарт через replace процесса
-    os.execv(sys.executable, [sys.executable] + sys.argv)
+    # Корректный рестарт через replace процесса (utils/restart.py — штатный, без ложной тревоги)
+    from utils.restart import restart_soon
+    restart_soon(1.0)
 
 
 # ─── /golden_key ─────────────────────────────────────────────────────────────
@@ -344,6 +345,8 @@ async def cmd_power_off(msg: types.Message) -> None:
     from core.funpay_client import accounts_manager
     accounts_manager.stop_all()
     # graceful exit
+    from utils.health import mark_clean_shutdown
+    mark_clean_shutdown()
     asyncio.get_event_loop().call_later(1, lambda: os._exit(0))
 
 

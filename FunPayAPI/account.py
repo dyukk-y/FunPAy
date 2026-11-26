@@ -130,15 +130,19 @@ class Account:
         self.__old_bot_character = "⁤"
         """Старое значение self.__bot_character, для корректной маркировки отправки ботом старых сообщений"""
         self.session = requests.Session()
+        # Форк: было total=6 c backoff_factor=1 и повтором POST — один запрос при
+        # сбое сети мог идти ~2 минуты, а повтор POST после обрыва чтения слал
+        # покупателю дубль сообщения. Теперь: максимум 3 повтора, короткие паузы,
+        # POST повторяется только если соединение не установилось (запрос не ушёл).
         retry_strategy = Retry(
-            total=6,
-            connect=6,
-            read=6,
+            total=3,
+            connect=3,
+            read=2,
             redirect=6,
-            status=6,
-            backoff_factor=1,
+            status=2,
+            backoff_factor=0.5,
             status_forcelist=[500, 502, 503, 504],
-            allowed_methods={"GET", "POST"}
+            allowed_methods={"GET"}
         )
         self.cookies = {}
         adapter = HTTPAdapter(max_retries=retry_strategy)
@@ -218,7 +222,8 @@ class Account:
                   "cookies": cookies}
         i = 0
         response = None
-        while i < 10 or response.status_code == 429:
+        while i < 10 or (response.status_code == 429 and i < 20):
+            # Форк: раньше при ответах 429 цикл мог крутиться бесконечно
             i += 1
             response = self.session.request(url=link, data=payload, allow_redirects=False, **kwargs)
             self.__update_cookies(response)

@@ -376,6 +376,11 @@ class FunPayClient:
             return
         logger.critical(f"Поток {name} неожиданно остановился — перезапускаю бота")
         try:
+            from utils.health import record_crash
+            record_crash(f"остановился поток FunPay ({name}) — бот перезапущен")
+        except Exception:
+            pass
+        try:
             import logging
             logging.shutdown()
         except Exception:
@@ -761,6 +766,17 @@ class FunPayClient:
                 logger.debug(f"order_chat_id({buyer}): {e}")
         return raw
 
+    # Асинхронные обёртки: сетевые запросы — в отдельном потоке, чтобы не
+    # замораживать бота (Telegram-меню и обработку событий)
+    async def aget_balance(self) -> Dict[str, float]:
+        return await asyncio.get_running_loop().run_in_executor(None, self.get_balance)
+
+    async def aget_active_orders_count(self) -> int:
+        return await asyncio.get_running_loop().run_in_executor(None, self.get_active_orders_count)
+
+    async def asend_message(self, chat_id, text: str) -> bool:
+        return await asyncio.get_running_loop().run_in_executor(None, self.send_message, chat_id, text)
+
     async def order_chat_id_async(self, order) -> Any:
         return await asyncio.get_running_loop().run_in_executor(None, self.order_chat_id, order)
 
@@ -795,6 +811,12 @@ class FunPayClient:
             except Exception as e:
                 err_str = str(e)
                 err_type = type(e).__name__
+                # Запрос ушёл, но ответ не дождались — сообщение скорее всего
+                # доставлено. Повтор отправил бы покупателю дубль.
+                if "ReadTimeout" in err_type or "Read timed out" in err_str:
+                    self._register_outgoing(cid, text)
+                    logger.warning(f"send_message({cid}): FunPay не ответил вовремя — считаю отправленным, без повтора")
+                    return True
 
                 # Тихие коды — обычное состояние, не пишем WARNING
                 if any(k in err_str for k in (

@@ -114,7 +114,7 @@ def setup_logger(level: str = "INFO") -> None:
         LOG_DIR / "bot.log",
         level="DEBUG",
         rotation="10 MB",
-        retention="14 days",
+        retention=5,   # форк: не больше 5 старых файлов (было 14 дней — на маленьком диске хостинга это сотни МБ)
         compression="zip",
         encoding="utf-8",
         format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",

@@ -19,6 +19,11 @@ def _do_restart() -> None:
         accounts_manager.stop_all()
     except Exception:
         pass
+    try:
+        from utils.health import mark_clean_shutdown
+        mark_clean_shutdown()
+    except Exception:
+        pass
     logger.info("Перезапуск процесса бота...")
     try:
         os.execv(sys.executable, [sys.executable] + sys.argv)

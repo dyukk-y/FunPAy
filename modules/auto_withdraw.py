@@ -227,7 +227,7 @@ class AutoWithdraw:
         if not cfg.enabled or not funpay_client.account:
             return
 
-        bal = funpay_client.get_balance()
+        bal = await funpay_client.aget_balance()
         balance_rub = float(bal.get("rub", 0))
 
         if not _should_withdraw_now(balance_rub):
@@ -287,7 +287,7 @@ async def withdraw_now() -> tuple:
     """Вызвать вывод вручную из меню. Возвращает (success, message)."""
     if not funpay_client.account:
         return False, "FunPay не подключён"
-    bal = funpay_client.get_balance()
+    bal = await funpay_client.aget_balance()
     amount = float(int(bal.get("rub", 0)))
     cfg = config_manager.settings.auto_withdraw
     if amount < cfg.min_amount_rub:

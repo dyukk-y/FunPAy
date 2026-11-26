@@ -1089,7 +1089,7 @@ async def ana_csv(c: types.CallbackQuery) -> None:
 
 @router.callback_query(F.data == "ana:balance")
 async def ana_balance(c: types.CallbackQuery) -> None:
-    bal = funpay_client.get_balance()
+    bal = await funpay_client.aget_balance()
     text = (
         "💰 <b>Баланс</b>\n\n"
         f"<code>{bal['rub']:.2f} ₽</code>\n"
@@ -1592,7 +1592,7 @@ async def wm_text(c: types.CallbackQuery, state: FSMContext) -> None:
 @router.callback_query(F.data == "sys:status")
 async def sys_status(c: types.CallbackQuery) -> None:
     fp = s().funpay
-    bal = funpay_client.get_balance() if fp.golden_key else {"rub": 0, "usd": 0, "eur": 0}
+    bal = await funpay_client.aget_balance() if fp.golden_key else {"rub": 0, "usd": 0, "eur": 0}
     text = (
         f"📊 <b>Статус</b>\n\n"
         f"Версия: <code>{s().version}</code>\n"

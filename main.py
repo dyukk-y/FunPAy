@@ -534,6 +534,10 @@ def _main_safe() -> None:
             from plugins.manager import plugin_manager
             plugin_manager.reload_all()
 
+            # Сторож зависаний + отчёты о сбоях (utils/health.py)
+            from utils import health
+            health.start()
+
             await start_background_modules()
             await start_funpay_if_configured()
 
@@ -548,6 +552,15 @@ def _main_safe() -> None:
                 await event_bus.emit(Event.BOT_STARTED, fp_account)
             except Exception as e:
                 logger.warning(f"Не удалось отправить BOT_STARTED: {e}")
+            # Если прошлый запуск закончился сбоем — сообщаем админам причину
+            try:
+                report = health.pop_crash_report()
+                if report:
+                    logger.warning(report.replace("<b>", "").replace("</b>", ""))
+                    from modules.notifications import _send_to_all
+                    await _send_to_all(report)
+            except Exception as e:
+                logger.warning(f"Не удалось отправить отчёт о сбое: {e}")
 
             try:
                 await dp.start_polling(bot, handle_signals=False)
@@ -564,9 +577,25 @@ def _main_safe() -> None:
                     await bot.session.close()
                 except Exception:
                     pass
+                health.mark_clean_shutdown()
                 logger.info("Бот остановлен.")
 
         # ─── Запуск ──────────────────────────────────────────────────────────
+
+        # SIGTERM (хостинг останавливает/передеплоит) — это штатная остановка,
+        # а не сбой: отмечаем, чтобы при следующем старте не было ложной тревоги
+        try:
+            import signal as _signal
+
+            def _on_term(signum, frame):
+                try:
+                    from utils.health import mark_clean_shutdown
+                    mark_clean_shutdown()
+                finally:
+                    os._exit(0)
+            _signal.signal(_signal.SIGTERM, _on_term)
+        except Exception:
+            pass
 
         try:
             asyncio.run(main())
@@ -580,6 +609,11 @@ def _main_safe() -> None:
     except Exception:
         # Полный traceback с указанием файла и строки
         err = traceback.format_exc()
+        try:
+            from utils.health import record_crash
+            record_crash("ошибка в работе бота", err)
+        except Exception:
+            pass
         _show_error_and_wait(err)
         sys.exit(1)
 
@@ -660,7 +694,13 @@ def _supervise() -> None:
         # Бот проработал долго — значит это разовый сбой, начинаем паузы заново
         if time.time() - started > 300:
             delay = 5
-        print(f"[supervisor] ⚠️ Бот упал (код {code}). Перезапуск через {delay} с...", flush=True)
+        try:
+            from utils.health import describe_exit, record_child_exit
+            record_child_exit(code)
+            why = describe_exit(code)
+        except Exception:
+            why = f"код {code}"
+        print(f"[supervisor] ⚠️ Бот упал: {why}. Перезапуск через {delay} с...", flush=True)
         try:
             time.sleep(delay)
         except KeyboardInterrupt:

@@ -132,7 +132,13 @@ class Runner:
         """
 
         id_ = self.__add_payload(payload)
+        # Форк: раньше ждали без ограничения — если очередь застревала, каждый
+        # вызов (отправка сообщения и т.п.) висел вечно и съедал рабочий поток
+        deadline = time.time() + 120
         while id_ in self.payload_queue:
+            if time.time() > deadline:
+                self.payload_queue.pop(id_, None)
+                raise Exception("FunPay Runner не обработал запрос за 120 сек")
             time.sleep(0.1)
         for i in range(300):
             if id_ in self.runner_results:
@@ -283,6 +289,9 @@ class Runner:
             except:
                 logger.error("Бабах")
                 logger.debug("TRACEBACK", exc_info=True)
+                # Форк: без паузы повторяющаяся ошибка крутила цикл вхолостую —
+                # 100% CPU и тысячи строк лога в секунду
+                time.sleep(1)
 
 
 

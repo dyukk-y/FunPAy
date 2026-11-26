@@ -150,7 +150,7 @@ class AIAssistant:
                 continue
 
             client = accounts_manager.get(data.get("acc")) or accounts_manager.active()
-            sent = client.send_message(int(chat_id_str), answer)
+            sent = await client.asend_message(int(chat_id_str), answer)
             if sent:
                 # Шаг 3: обновляем только этот чат под блокировкой
                 async with _pending_lock:

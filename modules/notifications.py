@@ -331,7 +331,7 @@ async def notify_order_paid(order) -> None:
     price    = getattr(order, "price", "?")
     text     = f"{_acc_tag(order)}{_e('💵 ')}<b>Заказ оплачен</b>\n#{order_id}\nСумма: {price}"
     if style.show_balance_after_order and client.account:
-        bal   = client.get_balance()
+        bal   = await client.aget_balance()
         text += f"\n\n💰 Баланс: {bal['rub']:.2f}₽"
     await _send_to_all(text)
 

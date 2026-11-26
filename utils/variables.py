@@ -107,6 +107,14 @@ def substitute(
     return text
 
 
+def _norm_chat_id(chat_id: Any) -> Any:
+    """Число — как число; «users-<id>-<id>» (чат заказа) — как есть."""
+    try:
+        return int(chat_id)
+    except (TypeError, ValueError):
+        return chat_id
+
+
 async def send_with_vars(
     text: str,
     send_fn,            # funpay_client.send_message(chat_id, text) или account.send_message
@@ -157,10 +165,14 @@ async def send_with_vars(
         photo_ids = re.findall(r"\$photo=\[([^\]]+)\]", chunk)
         clean_text = re.sub(r"\$photo=\[[^\]]+\]", "", chunk).strip()
 
-        # Отправляем текст
+        # Отправляем текст. Форк: отправка — сетевой запрос к FunPay, поэтому
+        # в отдельном потоке: раньше она шла прямо в основном цикле и при
+        # медленном FunPay/прокси замораживала бота на минуты (Telegram не
+        # отвечал, события не обрабатывались — со стороны выглядело как падение).
         if clean_text:
             try:
-                ok = send_fn(int(chat_id), clean_text)
+                loop = asyncio.get_running_loop()
+                ok = await loop.run_in_executor(None, send_fn, _norm_chat_id(chat_id), clean_text)
                 if ok:
                     success = True
             except Exception as e:
@@ -174,7 +186,7 @@ async def send_with_vars(
                     await loop.run_in_executor(
                         None,
                         lambda pid=photo_id: account.send_message(
-                            int(chat_id), "", image_id=int(pid)
+                            _norm_chat_id(chat_id), "", image_id=int(pid)
                         )
                     )
                     success = True

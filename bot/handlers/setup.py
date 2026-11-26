@@ -54,8 +54,8 @@ async def golden_key_received(msg: types.Message, state: FSMContext) -> None:
     config_manager.settings.setup_completed = True
     config_manager.save()
 
-    balance = client.get_balance()
-    active = client.get_active_orders_count()
+    balance = await client.aget_balance()
+    active = await client.aget_active_orders_count()
 
     await msg.answer(
         f"🚀 <b>PaltoFunPayBot успешно запущен!</b>\n\n"
