@@ -528,6 +528,8 @@ class ConfigManager:
     def __init__(self, path: Path = CONFIG_PATH) -> None:
         self.path = path
         self._lock = threading.RLock()
+        # Конфиг создан с нуля (первый запуск или хостинг стёр data/) — можно восстановить из копии в Telegram
+        self.created_fresh: bool = not path.exists()
         self.settings: Settings = self._load()
 
     def _load(self) -> Settings:
@@ -680,6 +682,17 @@ class ConfigManager:
                 acc.user_agent = fp.user_agent
                 acc.account_id = fp.account_id
                 acc.username = fp.username
+            self._write(self.settings)
+        try:
+            from utils import tg_backup
+            tg_backup.mark_dirty()
+        except Exception:
+            pass
+
+    def replace_from_dict(self, data: dict) -> None:
+        """Подменить настройки целиком (восстановление из резервной копии)."""
+        with self._lock:
+            self.settings = Settings.model_validate(data)
             self._write(self.settings)
 
     def update(self, **kwargs: Any) -> None:

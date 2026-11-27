@@ -66,3 +66,46 @@ def test_backup_and_restore(tmp_path, monkeypatch):
 
     ad.update("A1", buyer="Petya")                                       # локальные данные свежее копии
     assert asyncio.run(b.restore_if_needed()) == 0 and ad.get("A1")["buyer"] == "Petya"
+
+
+def test_restore_config_and_answers(tmp_path, monkeypatch):
+    import modules.ad_orders as ad
+    import modules.notifications as notif
+    import modules.sales_brain as sb
+    import utils.tg_backup as b
+    from config.settings import config_manager
+
+    monkeypatch.setattr(ad, "STATE_PATH", tmp_path / "ad.json")
+    monkeypatch.setattr(sb, "DB_PATH", tmp_path / "sb.db")
+    sb.reset_connection()
+    monkeypatch.setattr(config_manager.settings.telegram, "admin_ids", [111])
+    bot = Bot()
+    monkeypatch.setattr(notif, "_bot_ref", bot)
+    monkeypatch.setattr(b, "_msg_id", None)
+
+    sb.add_answer(["есть в наличии?"], "Да, есть!")
+    monkeypatch.setattr(config_manager.settings.order_paid_reply, "text", "МОЙ ТЕКСТ ПОСЛЕ ОПЛАТЫ")
+    assert asyncio.run(b.upload())
+    payload = json.loads(bot.files["f1"].decode("utf-8"))
+    assert "token" not in payload["config"]["telegram"]                  # токен бота в копию не попадает
+    assert payload["answers"][0]["answer"] == "Да, есть!"
+
+    # «хостинг стёр data/»: пустая база ответов, конфиг создан с нуля
+    sb.reset_connection()
+    monkeypatch.setattr(sb, "DB_PATH", tmp_path / "sb2.db")
+    captured = {}
+    monkeypatch.setattr(config_manager, "created_fresh", True)
+    monkeypatch.setattr(config_manager, "replace_from_dict", lambda d: captured.setdefault("cfg", d))
+    res = asyncio.run(b.restore_all())
+    assert res["answers"] == 1 and sb.list_answers()[0].answer == "Да, есть!"
+    assert res["config"] and res["restart"]
+    assert captured["cfg"]["order_paid_reply"]["text"] == "МОЙ ТЕКСТ ПОСЛЕ ОПЛАТЫ"
+    assert captured["cfg"]["telegram"]["token"] == config_manager.settings.telegram.token
+    sb.reset_connection()
+
+
+def test_no_restore_when_data_kept(tmp_path, monkeypatch):
+    import utils.tg_backup as b
+    from config.settings import config_manager
+    monkeypatch.setattr(config_manager, "created_fresh", False)
+    assert b.restore_config({"order_paid_reply": {"text": "x"}}) is False

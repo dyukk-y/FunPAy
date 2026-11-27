@@ -1,5 +1,6 @@
 """
-💾 Резервная копия заказов рекламы в Telegram (на случай, если хостинг стирает data/).
+💾 Резервная копия в Telegram (на случай, если хостинг стирает data/):
+заказы рекламы, база автоответов (ваши ответы и правки) и настройки (без токена бота).
 
 На BotHost при пересборке (обновлении бота) папка data/ может создаваться заново —
 бот бы «забыл» посты в очереди, покупателей, которые прямо сейчас присылают пост,
@@ -20,7 +21,7 @@ from typing import Optional
 from utils.logger import logger
 
 FILE_NAME = "ad_orders_backup.json"
-CAPTION = "💾 Резервная копия заказов рекламы — бот обновляет её сам. Не удаляйте и не открепляйте."
+CAPTION = "💾 Резервная копия (заказы рекламы, автоответы, настройки) — бот обновляет её сам. Не удаляйте и не открепляйте."
 DEBOUNCE_SEC = 30
 
 _dirty = False
@@ -57,6 +58,62 @@ async def _pinned_backup(bot, chat_id):
     return None
 
 
+def _config_for_backup() -> dict:
+    """Настройки без токена бота (он задаётся в панели хостинга)."""
+    from config.settings import config_manager
+    d = config_manager.settings.model_dump()
+    d.get("telegram", {}).pop("token", None)
+    return d
+
+
+def _answers_for_backup() -> list:
+    try:
+        from modules.sales_brain import export_answers
+        return export_answers()
+    except Exception:
+        return []
+
+
+async def _read_backup(bot, admin) -> Optional[dict]:
+    pm = await _pinned_backup(bot, admin)
+    if pm is None:
+        return None
+    try:
+        f = await bot.get_file(pm.document.file_id)
+        buf = await bot.download_file(f.file_path)
+        raw = buf.read() if hasattr(buf, "read") else bytes(buf)
+        data = json.loads(raw.decode("utf-8"))
+    except Exception as e:
+        logger.warning(f"tg_backup: не удалось прочитать копию: {e}")
+        return None
+    global _msg_id
+    _msg_id = pm.message_id
+    return data
+
+
+def restore_config(cfg_data: dict) -> bool:
+    """Конфиг создан с нуля (data/ стёрли) — вернуть ваши настройки. True, если нужен перезапуск."""
+    from config.settings import config_manager
+    if not cfg_data or not config_manager.created_fresh:
+        return False
+    cur = config_manager.settings
+    token = cur.telegram.token
+    old_key = cur.funpay.golden_key
+    cfg_data = json.loads(json.dumps(cfg_data))
+    cfg_data.setdefault("telegram", {})["token"] = token
+    # admin_ids из ENV, которых нет в копии, сохраняем
+    cfg_data["telegram"]["admin_ids"] = sorted(set(cfg_data["telegram"].get("admin_ids", [])) | set(cur.telegram.admin_ids))
+    config_manager.replace_from_dict(cfg_data)
+    config_manager.created_fresh = False
+    try:
+        from utils.env_config import apply_env_overrides
+        apply_env_overrides(logger)   # новые значения из панели хостинга по-прежнему главнее
+    except Exception:
+        pass
+    logger.info("💾 Настройки восстановлены из резервной копии в Telegram")
+    return config_manager.settings.funpay.golden_key != old_key
+
+
 async def upload() -> bool:
     """Обновить копию в Telegram (одно закреплённое сообщение, правится на месте)."""
     global _msg_id
@@ -67,7 +124,8 @@ async def upload() -> bool:
         return False
     with ad._lock:
         data = ad._load()
-    payload = json.dumps({"ts": time.time(), "orders": data}, ensure_ascii=False).encode("utf-8")
+    payload = json.dumps({"ts": time.time(), "orders": data, "config": _config_for_backup(),
+                          "answers": _answers_for_backup()}, ensure_ascii=False).encode("utf-8")
     file = BufferedInputFile(payload, filename=FILE_NAME)
     if _msg_id is None:
         pm = await _pinned_backup(bot, admin)
@@ -101,17 +159,14 @@ async def restore_if_needed() -> int:
     bot, admin = _bot(), _admin_id()
     if bot is None or admin is None:
         return 0
-    pm = await _pinned_backup(bot, admin)
-    if pm is None:
+    data = await _read_backup(bot, admin)
+    if not data:
         return 0
-    try:
-        f = await bot.get_file(pm.document.file_id)
-        buf = await bot.download_file(f.file_path)
-        raw = buf.read() if hasattr(buf, "read") else bytes(buf)
-        orders = json.loads(raw.decode("utf-8")).get("orders") or {}
-    except Exception as e:
-        logger.warning(f"tg_backup: не удалось прочитать копию: {e}")
-        return 0
+    return _restore_orders(data.get("orders") or {})
+
+
+def _restore_orders(orders: dict) -> int:
+    from modules import ad_orders as ad
     if not orders:
         return 0
     with ad._lock:
@@ -121,11 +176,34 @@ async def restore_if_needed() -> int:
             return 0
         cur.update(missing)
         ad._save(cur)
-    orders = missing
-    global _msg_id
-    _msg_id = pm.message_id
-    logger.info(f"💾 Восстановлено заказов рекламы из резервной копии: {len(orders)}")
-    return len(orders)
+    logger.info(f"💾 Восстановлено заказов рекламы из резервной копии: {len(missing)}")
+    return len(missing)
+
+
+async def restore_all() -> dict:
+    """Всё, что стёр хостинг: заказы рекламы, база автоответов, настройки."""
+    res = {"orders": 0, "answers": 0, "config": False, "restart": False}
+    bot, admin = _bot(), _admin_id()
+    if bot is None or admin is None:
+        return res
+    data = await _read_backup(bot, admin)
+    if not data:
+        return res
+    res["orders"] = _restore_orders(data.get("orders") or {})
+    try:
+        from modules.sales_brain import import_answers
+        res["answers"] = import_answers(data.get("answers") or [])
+    except Exception as e:
+        logger.warning(f"tg_backup: база ответов: {e}")
+    try:
+        from config.settings import config_manager
+        if config_manager.created_fresh and data.get("config"):
+            restore_config(data["config"])
+            res["config"] = True
+            res["restart"] = True   # чистый перезапуск — все модули подхватят восстановленные настройки
+    except Exception as e:
+        logger.warning(f"tg_backup: настройки: {e}")
+    return res
 
 
 async def _loop() -> None:
@@ -143,11 +221,21 @@ async def start() -> None:
     """Вызывать после запуска Telegram-бота: восстановление + фоновое обновление копии."""
     global _task
     try:
-        n = await restore_if_needed()
-        if n:
+        res = await restore_all()
+        parts = []
+        if res["config"]:
+            parts.append("ваши настройки")
+        if res["answers"]:
+            parts.append(f"база автоответов ({res['answers']})")
+        if res["orders"]:
+            parts.append(f"заказы рекламы ({res['orders']}) — очередь, сбор постов и удаление по сроку продолжаются")
+        if parts:
             from modules.notifications import _send_to_all
-            await _send_to_all(f"♻️ После перезапуска восстановил из резервной копии заказы рекламы: {n}. "
-                               "Очередь, сбор постов и удаление по сроку продолжаются.")
+            await _send_to_all("♻️ Хостинг очистил данные при перезапуске — восстановил из резервной копии: "
+                               + "; ".join(parts) + ".")
+        if res["restart"]:
+            from utils.restart import restart_soon
+            restart_soon(3.0)   # перезапуск с восстановленными настройками (и golden_key)
     except Exception as e:
         logger.warning(f"tg_backup restore: {e}")
     if _task is None or _task.done():

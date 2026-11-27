@@ -526,7 +526,34 @@ def get_answer(aid: int) -> Optional[Answer]:
     return _row_to_answer(r[0]) if r else None
 
 
+def _backup_dirty() -> None:
+    try:
+        from utils import tg_backup
+        tg_backup.mark_dirty()
+    except Exception:
+        pass
+
+
+def export_answers() -> List[dict]:
+    return [dict(r) for r in _query("SELECT * FROM answers")]
+
+
+def import_answers(rows: List[dict]) -> int:
+    """Восстановление базы ответов (только если она пуста)."""
+    if _query("SELECT 1 FROM answers LIMIT 1"):
+        return 0
+    n = 0
+    for r in rows:
+        _exec("INSERT INTO answers (examples, answer, uses, auto, edited, sent, created_ts, auto_locked) "
+              "VALUES (?,?,?,?,?,?,?,?)",
+              (r.get("examples", "[]"), r.get("answer", ""), r.get("uses", 0), r.get("auto", 0), r.get("edited", 0),
+               r.get("sent", 0), r.get("created_ts"), r.get("auto_locked", 0)))
+        n += 1
+    return n
+
+
 def add_answer(examples: List[str], answer: str, uses: int = 0, edited: bool = True) -> int:
+    _backup_dirty()
     cur = _exec("INSERT INTO answers (examples, answer, uses, auto, edited, sent, created_ts) VALUES (?,?,?,?,?,?,?)",
                 (json.dumps(examples[:8], ensure_ascii=False), answer, uses, 0, int(edited), 0, time.time()))
     return int(cur.lastrowid)
@@ -547,10 +574,12 @@ def update_answer(aid: int, **kw) -> None:
         vals.append(v)
     if sets:
         _exec(f"UPDATE answers SET {', '.join(sets)} WHERE id=?", (*vals, aid))
+        _backup_dirty()
 
 
 def delete_answer(aid: int) -> None:
     _exec("DELETE FROM answers WHERE id=?", (aid,))
+    _backup_dirty()
 
 
 def rebuild_answers() -> Tuple[int, int]:
