@@ -67,8 +67,8 @@ async def _handle_order_confirmed(order) -> None:
 
     # Заказ рекламы закрыт — больше не ждём ссылку на пост
     try:
-        from modules.ad_orders import forget_order
-        forget_order(order_id)
+        from modules.ad_orders import mark_confirmed
+        mark_confirmed(order_id)
     except Exception:
         pass
 
@@ -206,6 +206,8 @@ async def handle_order_paid(order) -> None:
         logger.debug(f"ad_orders: {e}")
     try:
         cfg = config_manager.settings.order_paid_reply
+        if config_manager.settings.ad_post.active() and config_manager.settings.ad_flow.enabled:
+            return  # инструкцию покупателю отправит автопубликация (modules/ad_autopost.py)
         if not cfg.enabled or not (cfg.text or "").strip():
             return
         order_id = str(getattr(order, "id", "") or "")

@@ -58,7 +58,7 @@ async def golden_key_received(msg: types.Message, state: FSMContext) -> None:
     active = await client.aget_active_orders_count()
 
     await msg.answer(
-        f"🚀 <b>PaltoFunPayBot успешно запущен!</b>\n\n"
+        f"🚀 <b>Help Funpay by yasha успешно запущен!</b>\n\n"
         f"Версия: <code>{config_manager.settings.version}</code>\n"
         f"Аккаунт: <b>{fp.username}</b> (ID: <code>{fp.account_id}</code>)\n"
         f"Баланс: <code>{balance['rub']:.2f}₽</code>, "

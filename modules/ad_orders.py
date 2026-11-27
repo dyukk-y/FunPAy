@@ -55,9 +55,17 @@ def _load() -> Dict[str, dict]:
         return {}
 
 
+def _keep(v: dict, cutoff: float) -> bool:
+    if v.get("ts", 0) > cutoff:
+        return True
+    p = v.get("post") or {}
+    # пост ещё нужно открепить/удалить по сроку — запись не выбрасываем
+    return bool((p.get("delete_at") and not p.get("deleted")) or p.get("unpin_at"))
+
+
 def _save(d: Dict[str, dict]) -> None:
     cutoff = time.time() - KEEP_DAYS * 86400
-    d = {k: v for k, v in d.items() if v.get("ts", 0) > cutoff}
+    d = {k: v for k, v in d.items() if _keep(v, cutoff)}
     try:
         STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
         tmp = STATE_PATH.with_suffix(".tmp")
@@ -83,6 +91,25 @@ def update(order_id: str, **fields) -> Optional[dict]:
         return e
 
 
+CONFIRMED = "confirmed"
+
+
+def mark_confirmed(order_id: str) -> None:
+    """Покупатель подтвердил заказ: ссылку больше не ждём, но пост по сроку ещё удалим/открепим."""
+    with _lock:
+        d = _load()
+        e = d.get(str(order_id))
+        if e is None:
+            return
+        p = e.get("post") or {}
+        if (p.get("delete_at") and not p.get("deleted")) or p.get("unpin_at"):
+            e["status"] = CONFIRMED
+            e["confirmed_ts"] = time.time()
+        else:
+            d.pop(str(order_id), None)
+        _save(d)
+
+
 def forget_order(order_id: str) -> None:
     with _lock:
         d = _load()
@@ -95,6 +122,14 @@ def waiting_orders() -> List[dict]:
     with _lock:
         items = [e for e in _load().values() if e.get("status") in (WAITING, NEED_DURATION)]
     return sorted(items, key=lambda e: e.get("ts", 0))
+
+
+_AUTOPOST_STAGES = ("pending", "collect", "confirm", "ready", "approval", "queued", "publishing", "published")
+
+
+def manual_waiting() -> List[dict]:
+    """Заказы, по которым ссылку на пост пришлёте вы (не идёт автопубликация)."""
+    return [e for e in waiting_orders() if (e.get("post") or {}).get("stage") not in _AUTOPOST_STAGES]
 
 
 def extract_link(text: str) -> Optional[str]:
@@ -141,7 +176,14 @@ def card_text(e: dict) -> str:
         + (f" · 💰 {html.escape(str(e['price']))} ₽" if e.get("price") else ""),
         f"⏱ Срок: {dur}",
     ]
-    if e.get("status") == SENT:
+    stage = (e.get("post") or {}).get("stage")
+    if stage and stage not in ("manual", "failed"):
+        from modules.ad_autopost import stage_line
+        lines.append(f"\n🤖 {html.escape(stage_line(e))}")
+        if stage in ("pending", "collect", "confirm"):
+            lines.append("Бот сам соберёт пост у покупателя в чате FunPay, опубликует в канал и пришлёт ссылку. "
+                         "Вам ничего делать не нужно.")
+    elif e.get("status") == SENT:
         lines.append(f"\n✅ Ссылка отправлена покупателю: {html.escape(e.get('link', ''))}")
     elif e.get("status") == NEED_DURATION:
         lines.append(f"\n🔗 Ссылка получена: {html.escape(e.get('link', ''))}\n⏱ Укажите срок — и я сразу отправлю покупателю.")
@@ -157,6 +199,13 @@ def card_kb(e: dict):
     from aiogram.types import InlineKeyboardButton as B, InlineKeyboardMarkup as M
     oid = e["order_id"]
     rows = []
+    stage = (e.get("post") or {}).get("stage")
+    if stage and stage not in ("manual", "failed", "published"):
+        rows.append([B(text="📣 Опубликовать сейчас", callback_data=f"ap:go:{oid}"),
+                     B(text="⏱ Срок", callback_data=f"ad:dur:{oid}")])
+        rows.append([B(text="📨 Написать покупателю", callback_data=f"qr:reply:{e.get('chat_id')}@{e.get('acc', 0)}"),
+                     B(text="✍️ Опубликую сам", callback_data=f"ap:manual:{oid}")])
+        return M(inline_keyboard=rows)
     if e.get("status") != SENT:
         rows.append([B(text="🔗 Прислать ссылку", callback_data=f"ad:link:{oid}"),
                      B(text="⏱ Срок", callback_data=f"ad:dur:{oid}")])
@@ -216,12 +265,22 @@ async def on_paid(order) -> None:
         e = update(order_id, acc=getattr(client, "index", 0), chat_id=chat_id or getattr(order, "chat_id", None),
                    buyer=buyer, lot=title, price=str(getattr(order, "price", "") or ""),
                    hours=dur.hours if dur else None, unit=dur.unit if dur else "",
+                   top_hours=dur.top_hours if dur else 0, pin=bool(dur and dur.pin),
+                   pin_hours=dur.pin_hours if dur else 0,
                    where=dur.where if dur else ("в истории" if "истори" in title.lower() else "в канале"),
                    dur_source=dur.source if dur else "")
         if e is None:
             return
         logger.info(f"ad_orders: заказ #{order_id} ({buyer}) ждёт ссылку на пост, срок: "
                     f"{ad_duration.human(dur.hours, dur.unit) if dur else 'не найден'}")
+        # 📣 Автопубликация: бот сам соберёт пост в чате FunPay и опубликует в канал
+        try:
+            from modules import ad_autopost
+            if ad_autopost.active():
+                await ad_autopost.begin(order_id)
+                e = get(order_id) or e
+        except Exception as ex:
+            logger.warning(f"ad_orders: автопубликация не запустилась: {ex}")
         from modules.notifications import _send_to_all
         await _send_to_all(card_text(e), card_kb(e))
     except Exception as ex:
@@ -285,5 +344,11 @@ async def _send_to_buyer(e: dict, text: str) -> bool:
 
 
 def chats_waiting_post() -> set:
-    """Чаты, где покупатель, скорее всего, присылает текст поста (подсказки там не нужны)."""
-    return {str(e.get("chat_id")) for e in waiting_orders()}
+    """Чаты, где покупатель, скорее всего, присылает текст поста (автоответы и подсказки там не нужны)."""
+    chats = {str(e.get("chat_id")) for e in waiting_orders()}
+    try:
+        from modules.ad_autopost import chats_collecting
+        chats |= chats_collecting()
+    except Exception:
+        pass
+    return chats

@@ -42,11 +42,8 @@ async def cmd_start(msg: types.Message, state: FSMContext) -> None:
 
     if is_authorized(user_id):
         # Уже авторизован — короткое приветствие + подсказка про /menu
-        from bot.keyboards import kb_main_menu
-        await msg.answer(
-            f"👋 С возвращением, <b>{name}</b>! Вот меню (оно же — /menu):",
-            reply_markup=kb_main_menu(),
-        )
+        from bot.handlers.menu import main_text
+        await msg.answer(main_text(), reply_markup=kb_main_menu())
         await state.clear()
         return
 

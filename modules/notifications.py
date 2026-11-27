@@ -68,7 +68,7 @@ def _detect_sender_role(message) -> tuple:
     own_id = accounts_manager.client_for(message).own_id
 
     if own_id and author_id == own_id:
-        return ("🏷", f"Вы (PaltoBot)")
+        return ("🏷", "Вы")
 
     if author_id == 0:
         return ("🤖", "FunPay (системное)")
@@ -413,7 +413,7 @@ async def notify_started(account=None) -> None:
         return
 
     # Сообщение #1 — факт включения
-    await _send_to_all(f"{_e('🚀 ')}<b>PaltoFunPayBot запущен</b>")
+    await _send_to_all(f"{_e('🚀 ')}<b>Help Funpay by yasha запущен</b>")
 
     # Сообщение #2 — перечисляем подключённые аккаунты FunPay
     names = []
@@ -445,4 +445,4 @@ async def notify_started(account=None) -> None:
 async def notify_stopped() -> None:
     if not config_manager.settings.notifications.bot_started_stopped:
         return
-    await _send_to_all(f"{_e('🛑 ')}<b>PaltoFunPayBot остановлен</b>")
+    await _send_to_all(f"{_e('🛑 ')}<b>Help Funpay by yasha остановлен</b>")

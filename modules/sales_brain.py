@@ -96,6 +96,12 @@ def db() -> sqlite3.Connection:
                     acc INTEGER, chat_id TEXT, ts REAL, answer_id INTEGER
                 );
             """)
+            # Миграция: «авто» выключено вами вручную — бот не включит его сам
+            try:
+                _conn.execute("ALTER TABLE answers ADD COLUMN auto_locked INTEGER DEFAULT 0")
+                _conn.commit()
+            except sqlite3.OperationalError:
+                pass
         return _conn
 
 
@@ -527,7 +533,7 @@ def add_answer(examples: List[str], answer: str, uses: int = 0, edited: bool = T
 
 
 def update_answer(aid: int, **kw) -> None:
-    allowed = {"answer", "auto", "edited", "uses", "sent", "examples"}
+    allowed = {"answer", "auto", "edited", "uses", "sent", "examples", "auto_locked"}
     sets = []
     vals = []
     for k, v in kw.items():
@@ -574,7 +580,19 @@ def rebuild_answers() -> Tuple[int, int]:
         else:
             add_answer(examples, ans, uses=c.count, edited=False)
             added += 1
+    _auto_enable_frequent()
     return added, updated
+
+
+def _auto_enable_frequent() -> int:
+    """Ответы, которые вы дали N+ раз, бот разрешает отправлять сам (кроме «🔒» и выключенных вами)."""
+    n = 0
+    min_uses = max(1, int(getattr(cfg(), "auto_enable_min_uses", 3) or 3))
+    for r in _query("SELECT * FROM answers WHERE auto=0 AND COALESCE(auto_locked,0)=0 AND uses>=?", (min_uses,)):
+        if not looks_secret(r["answer"]):
+            _exec("UPDATE answers SET auto=1 WHERE id=?", (r["id"],))
+            n += 1
+    return n
 
 
 def best_answer(text: str) -> Tuple[Optional[Answer], float]:

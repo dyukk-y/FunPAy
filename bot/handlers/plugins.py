@@ -193,10 +193,10 @@ async def cb_noop(c: types.CallbackQuery) -> None:
 
 
 @router.callback_query(F.data == "plg:back_main")
-async def cb_back_main(c: types.CallbackQuery) -> None:
+async def cb_back_main(c: types.CallbackQuery, state: FSMContext) -> None:
     # Возвращаем в главное меню — то же что menu:main
     from bot.handlers.menu import back_main
-    await back_main(c)
+    await back_main(c, state)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

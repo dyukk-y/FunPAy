@@ -71,6 +71,8 @@ def paid(tmp_path, monkeypatch):
     monkeypatch.setattr(orx, "_PAID_DONE_PATH", tmp_path / "paid.json")
     saved = config_manager.settings.order_paid_reply
     config_manager.settings.order_paid_reply = OrderPaidReplySettings(delay_sec=0)
+    old_ap = config_manager.settings.ad_post.enabled
+    config_manager.settings.ad_post.enabled = False   # ручной режим: «Пришлите пост на …»
     out = []
     async def resolve(order):
         return order.chat_id
@@ -80,6 +82,7 @@ def paid(tmp_path, monkeypatch):
     monkeypatch.setattr(funpay_client.accounts_manager, "client_for", lambda o: client)
     yield orx, out, config_manager.settings.order_paid_reply
     config_manager.settings.order_paid_reply = saved
+    config_manager.settings.ad_post.enabled = old_ap
 
 
 def test_paid_reply_once_per_order(paid):

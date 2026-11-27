@@ -255,43 +255,32 @@ async def cmd_del_logs(msg: types.Message) -> None:
 
 # ─── /about ──────────────────────────────────────────────────────────────────
 
+def _about_text() -> str:
+    from utils.branding import BOT_NAME, ORIGINAL_CREDIT
+    return (
+        f"🤖 <b>{BOT_NAME}</b> · v{config_manager.settings.version}\n\n"
+        "📣 Реклама в канал прямо из чата FunPay: текст и фото от покупателя → пост → ссылка покупателю\n"
+        "🧠 Автоответы в вашем стиле — бот учится на ваших ответах\n"
+        "📈 Автоподнятие лотов · 🔵 онлайн 24/7\n"
+        "🛒 Ответы после оплаты и подтверждения, просьба об отзыве\n"
+        "📝 Автообновление текстов и цен лотов\n"
+        "📩 Все заказы и сообщения — в Telegram\n"
+        "🩺 Сам перезапускается при сбоях и сообщает причину\n\n"
+        f"<i>{ORIGINAL_CREDIT}</i>"
+    )
+
+
 @router.message(Command("about"))
 async def cmd_about(msg: types.Message) -> None:
     if not _ensure(msg):
         return
-    text = (
-        f"🤖 <b>PaltoFunPayBot v{config_manager.settings.version}</b>\n\n"
-        f"📦 Автовыдача товаров\n"
-        f"📈 Автоподнятие лотов\n"
-        f"💬 Умный автоответчик\n"
-        f"🟢 Автовосстановление лотов\n"
-        f"🔴 Автодеактивация (если товар закончился)\n"
-        f"🔵 Постоянный онлайн\n"
-        f"📩 Уведомления в Telegram\n"
-        f"⚙️ Полный контроль через Telegram\n"
-        f"🧩 Поддержка плагинов\n"
-        f"🧠 ИИ-помощник (DeepSeek / Anthropic / OpenAI)"
-    )
-    await msg.answer(text)
+    await msg.answer(_about_text(), disable_web_page_preview=True)
 
 
 @router.callback_query(F.data == "info:about")
 async def cb_info_about(c: types.CallbackQuery) -> None:
-    """Кнопка «🤖 PaltoFunPayBot» из приветствия неавторизованного юзера."""
-    text = (
-        f"🤖 <b>PaltoFunPayBot v{config_manager.settings.version}</b>\n\n"
-        f"📦 Автовыдача товаров\n"
-        f"📈 Автоподнятие лотов\n"
-        f"💬 Умный автоответчик\n"
-        f"🟢 Автовосстановление лотов\n"
-        f"🔴 Автодеактивация (если товар закончился)\n"
-        f"🔵 Постоянный онлайн\n"
-        f"📩 Уведомления в Telegram\n"
-        f"⚙️ Полный контроль через Telegram\n"
-        f"🧩 Поддержка плагинов\n"
-        f"🧠 ИИ-помощник (DeepSeek / Anthropic / OpenAI)"
-    )
-    await c.message.answer(text)
+    """Кнопка «ℹ️ О боте» из приветствия неавторизованного юзера."""
+    await c.message.answer(_about_text(), disable_web_page_preview=True)
     await c.answer()
 
 

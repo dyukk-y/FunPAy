@@ -73,6 +73,12 @@ async def track_message(message) -> None:
     from utils.fp_system import is_system_text
     if author_id == 0 or is_system_text(text):
         return
+    try:
+        from modules.ad_orders import chats_waiting_post
+        if str(chat_id) in chats_waiting_post():
+            return  # покупатель присылает текст рекламного поста
+    except Exception:
+        pass
 
     async with _pending_lock:
         pending = _load_pending()

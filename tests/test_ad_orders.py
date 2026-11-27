@@ -66,9 +66,11 @@ def flow(tmp_path, monkeypatch):
     monkeypatch.setattr(ad, "STATE_PATH", tmp_path / "ad.json")
     monkeypatch.setattr(orx, "_PAID_DONE_PATH", tmp_path / "done.json")
     monkeypatch.setattr(config_manager, "save", lambda: None)
+    from config.settings import AdPostSettings
     s = config_manager.settings
-    saved = (s.ad_flow, s.order_confirm_reply, s.ask_review)
+    saved = (s.ad_flow, s.order_confirm_reply, s.ask_review, s.ad_post)
     s.ad_flow, s.order_confirm_reply, s.ask_review = AdFlowSettings(), OrderConfirmReplySettings(), AskReviewSettings()
+    s.ad_post = AdPostSettings(enabled=False)        # здесь проверяем ручной режим (ссылку присылаете вы)
 
     acc = FakeAccount()
     cl = funpay_client.FunPayClient()
@@ -81,7 +83,7 @@ def flow(tmp_path, monkeypatch):
         cards.append(text)
     monkeypatch.setattr(notif, "_send_to_all", fake_all)
     yield ad, orx, acc, cards
-    s.ad_flow, s.order_confirm_reply, s.ask_review = saved
+    s.ad_flow, s.order_confirm_reply, s.ask_review, s.ad_post = saved
 
 
 def test_full_ad_flow(flow):
@@ -157,7 +159,8 @@ def test_migration_sets_confirm_texts(tmp_path):
     s = ConfigManager(p).settings
     assert s.order_confirm_reply.enabled and s.order_confirm_reply.text.startswith("Был рад посотрудничать")
     assert s.ask_review.enabled and s.ask_review.delay_minutes == 0 and "отзыв" in s.ask_review.text
-    assert s.sales_brain.mode == "suggest"
+    assert s.sales_brain.mode == "auto"             # v2: уверен — отвечает сам, не уверен — подсказка
+    assert s.auto_lift.enabled and s.ad_post.active() and s.ad_post.channel_id == -1002120185316
     # повторная загрузка не перетирает ваши правки
     data = json.loads(p.read_text(encoding="utf-8"))
     data["order_confirm_reply"]["text"] = "мой текст"

@@ -185,6 +185,7 @@ def test_live_suggest(sb, live):
 
 def test_live_auto_only_when_allowed(sb, live):
     _seed(sb)
+    sb.cfg().auto_enable_min_uses = 99            # частые ответы автоматически не разрешаем
     sb.rebuild_answers()
     stock = next(a for a in sb.list_answers() if a.uses == 3)
     sb.cfg().mode = "auto"
@@ -256,3 +257,14 @@ def test_suggest_shows_variants(sb, live):
     client, notes = live(m, history=[m])
     pid = list(sb.pending)[-1]
     assert len(sb.pending[pid]["variants"]) == 2 and "<b>2.</b>" in notes[-1]
+
+
+def test_frequent_answers_auto_enabled_but_respect_manual_off(sb):
+    _seed(sb)
+    sb.cfg().auto_enable_min_uses = 3
+    sb.rebuild_answers()
+    stock = next(a for a in sb.list_answers() if a.uses == 3)
+    assert stock.auto                               # дали этот ответ 3 раза — бот отвечает им сам
+    sb.update_answer(stock.id, auto=False, auto_locked=True)   # вы выключили вручную
+    sb.rebuild_answers()
+    assert not sb.get_answer(stock.id).auto

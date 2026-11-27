@@ -71,24 +71,67 @@ async def edit_cancel(c: types.CallbackQuery, state: FSMContext) -> None:
     await c.message.answer(text)
     await c.answer()
 
+def main_text() -> str:
+    """Главный экран: всё важное одним взглядом."""
+    from utils.branding import BOT_NAME
+    st = s()
+    lines = [f"🤖 <b>{BOT_NAME}</b>", ""]
+    try:
+        clients = accounts_manager.connected_clients()
+        if clients:
+            names = ", ".join(html.escape(str(getattr(c.account, "username", "") or c.alias)) for c in clients)
+            lines.append(f"🟢 FunPay: <b>{names}</b> — онлайн" if st.online_keeper.enabled else f"🟢 FunPay: <b>{names}</b>")
+        else:
+            lines.append("🔴 FunPay не подключён — нажмите «🔑 golden_key»")
+    except Exception:
+        lines.append("⚪ FunPay: нет данных")
+    lines.append(f"📈 Автоподнятие лотов: {'вкл' if st.auto_lift.enabled else 'выкл'}")
+    try:
+        from modules import ad_autopost as ap
+        from modules import ad_orders as ad
+        if st.ad_post.active():
+            ch = ap._channel_cache.get("msg") or "канал проверяется…"
+            lines.append(f"📣 Реклама в канал: автопубликация · {html.escape(ch.lstrip('✅⚠️ '))}")
+        else:
+            lines.append("📣 Реклама: ручной режим (ссылку на пост присылаете вы)")
+        n = sum(1 for e in ad._load().values() if e.get("status") in (ad.WAITING, ad.NEED_DURATION))
+        if n:
+            lines.append(f"📢 Заказов рекламы в работе: <b>{n}</b>")
+    except Exception:
+        pass
+    try:
+        from modules import sales_brain as sb
+        mode = {"auto": "отвечаю сам, если уверен; иначе — подсказка вам",
+                "suggest": "присылаю вам готовые ответы", "off": "выключены"}.get(st.sales_brain.mode, "")
+        lines.append(f"🧠 Автоответы: {mode} · в базе {len(sb.list_answers())}")
+    except Exception:
+        pass
+    return "\n".join(lines)
+
+
 @router.message(Command("menu"))
 async def cmd_menu(msg: types.Message, state: FSMContext) -> None:
     if not is_authorized(msg.from_user.id):
         await msg.answer("⛔ Доступ запрещён. Введите /start для авторизации.")
         return
     await state.clear()
-    await msg.answer(
-        f"👋 Привет! Это меню PaltoFunPayBot v{s().version}. Выберите, что хотите настроить.",
-        reply_markup=kb.kb_main_menu(),
-    )
+    await msg.answer(main_text(), reply_markup=kb.kb_main_menu())
 
 
 @router.callback_query(F.data == "menu:main")
-async def back_main(c: types.CallbackQuery) -> None:
-    await c.message.edit_text(
-        f"👋 Привет! Это меню PaltoFunPayBot v{s().version}. Выберите, что хотите настроить.",
-        reply_markup=kb.kb_main_menu(),
-    )
+async def back_main(c: types.CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    try:
+        await c.message.edit_text(main_text(), reply_markup=kb.kb_main_menu())
+    except Exception:
+        await c.message.answer(main_text(), reply_markup=kb.kb_main_menu())
+    await c.answer()
+
+
+@router.callback_query(F.data == "menu:more")
+async def menu_more(c: types.CallbackQuery) -> None:
+    await c.message.edit_text("⚙️ <b>Все настройки</b>\n\nЗдесь — всё, что редко нужно менять.",
+                              reply_markup=kb.kb_more())
     await c.answer()
 
 

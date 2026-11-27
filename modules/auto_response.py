@@ -27,6 +27,13 @@ async def handle_new_message(message) -> None:
     from utils.fp_system import is_system_text
     if getattr(message, "author_id", None) == 0 or is_system_text(getattr(message, "text", "") or ""):
         return
+    # Покупатель присылает текст рекламного поста — на него не отвечаем шаблонами
+    try:
+        from modules.ad_orders import chats_waiting_post
+        if str(getattr(message, "chat_id", "")) in chats_waiting_post():
+            return
+    except Exception:
+        pass
 
     author    = getattr(message, "author", "") or ""
     text_in   = (getattr(message, "text", "") or "").lower()

@@ -102,7 +102,7 @@ class FunPaySettings(BaseModel):
 
 class AutoLiftSettings(BaseModel):
     """Автоподнятие лотов."""
-    enabled: bool = False
+    enabled: bool = True
     interval_minutes: int = 240           # FunPay позволяет ~раз в 4 часа
     only_active_categories: bool = True
 
@@ -329,6 +329,35 @@ class AdFlowSettings(BaseModel):
     default_hours: int = 0                # срок, если в лоте не найден (0 — спросить у вас)
 
 
+class AdPostSettings(BaseModel):
+    """
+    Автопубликация рекламы в ваш Telegram-канал прямо из чата FunPay (форк).
+    Покупатель оплатил → бот в чате FunPay просит текст (и фото) → показывает,
+    как будет выглядеть пост → «да» → бот публикует в канал (закрепляет, если
+    в лоте есть «закреп»), отправляет покупателю ссылку и срок, а по истечении
+    срока удаляет пост. Бот должен быть админом канала.
+    """
+    enabled: bool = True
+    channel_id: int = -1002120185316
+    channel_username: str = ""            # заполняется сам (для красивых ссылок t.me/<username>/<id>)
+    channel_title: str = ""
+    require_approval: bool = False        # True — перед публикацией спросить вас «✅ Опубликовать?»
+    delete_after_expiry: bool = True      # удалить пост, когда закончится срок размещения
+    footer: str = ""                      # подпись под каждым постом (например «#реклама»)
+    quiet_from: int = -1                  # «тихие часы» МСК: не публиковать с quiet_from до quiet_to (-1 — выкл)
+    quiet_to: int = -1
+    remind_after_min: int = 60            # напомнить покупателю, если пост не прислан / не подтверждён
+    prompt: str = (
+        "Спасибо за покупку! 🙌\n"
+        "Пришлите сюда, в этот чат, текст рекламного поста. Если к посту нужно фото — отправьте и его "
+        "(можно несколько).\n"
+        "Когда всё отправите, напишите «готово» — я покажу, как будет выглядеть пост."
+    )
+
+    def active(self) -> bool:
+        return bool(self.enabled and self.channel_id)
+
+
 class WatermarkSettings(BaseModel):
     """Водяной знак на исходящие сообщения бота."""
     enabled: bool = False
@@ -425,9 +454,10 @@ class SalesBrainSettings(BaseModel):
     где первым написал покупатель.
     """
     collect: bool = True                  # запоминать переписку (локально, в data/sales_brain.db)
-    mode: str = "suggest"                 # off | suggest | auto
+    mode: str = "auto"                    # off | suggest | auto (уверен — отвечает сам, не уверен — подсказка вам)
     suggest_threshold: float = 0.45       # с какой похожести вопроса предлагать ответ
-    auto_threshold: float = 0.6           # с какой похожести отвечать самому
+    auto_threshold: float = 0.7           # с какой похожести отвечать самому
+    auto_enable_min_uses: int = 3         # ответ, который вы дали N+ раз, бот сам разрешает отправлять автоматически
     auto_delay_min: int = 15              # пауза перед автоответом, сек (успеть ответить самому)
     auto_delay_max: int = 45
     max_auto_per_chat: int = 3            # не больше N автоответов в одном чате за сутки
@@ -488,6 +518,7 @@ class Settings(BaseModel):
     sales_brain: SalesBrainSettings = Field(default_factory=SalesBrainSettings)
     order_paid_reply: OrderPaidReplySettings = Field(default_factory=OrderPaidReplySettings)
     ad_flow: AdFlowSettings = Field(default_factory=AdFlowSettings)
+    ad_post: AdPostSettings = Field(default_factory=AdPostSettings)
     env_applied: Dict[str, str] = Field(default_factory=dict)  # отпечатки применённых ENV (см. utils/env_config.py)
 
 
@@ -557,6 +588,19 @@ class ConfigManager:
                 if settings.sales_brain.mode == "off":
                     settings.sales_brain.mode = "suggest"
                 migrations["fork_confirm_texts_v1"] = True
+                need_save = True
+
+            # Форк v2 (один раз): полностью автоматический режим
+            if not migrations.get("fork_auto_v2"):
+                settings.auto_lift.enabled = True
+                settings.online_keeper.enabled = True
+                if settings.sales_brain.mode in ("off", "suggest"):
+                    settings.sales_brain.mode = "auto"
+                settings.sales_brain.auto_threshold = max(settings.sales_brain.auto_threshold, 0.7)
+                if not settings.ad_post.channel_id:
+                    settings.ad_post.channel_id = AdPostSettings().channel_id
+                settings.ad_post.enabled = True
+                migrations["fork_auto_v2"] = True
                 need_save = True
 
             # Форк: старый текст ответа после оплаты по умолчанию → новый

@@ -349,7 +349,8 @@ async def sb_entry_auto(c: types.CallbackQuery) -> None:
     if not a.auto and a.risky:
         await c.answer("🔒 Этот ответ похож на выдачу товара — включать «авто» нельзя. Исправьте текст.", show_alert=True)
         return
-    sb.update_answer(a.id, auto=not a.auto)
+    # выключили вручную — бот больше не включит «авто» сам; включили — снимаем запрет
+    sb.update_answer(a.id, auto=not a.auto, auto_locked=a.auto)
     a = sb.get_answer(a.id)
     await _edit(c, _entry_text(a), _entry_kb(a))
     await c.answer("Бот будет отвечать сам" if a.auto else "Только подсказка")

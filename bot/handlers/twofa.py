@@ -90,7 +90,7 @@ async def cmd_2fa_setup(msg: types.Message) -> None:
 
     # Если уже включена — показываем текущий секрет
     if cfg.twofa_enabled and cfg.twofa_secret:
-        url = otpauth_url(cfg.twofa_secret, "PaltoFunPayBot", str(msg.from_user.id))
+        url = otpauth_url(cfg.twofa_secret, "Help Funpay by yasha", str(msg.from_user.id))
         await msg.answer(
             "🔐 <b>2FA уже включена</b>\n\n"
             f"Если потеряли доступ — добавьте секрет вручную в Google Authenticator:\n"
@@ -110,14 +110,14 @@ async def cmd_2fa_setup(msg: types.Message) -> None:
     config_manager.save()
     audit(msg.from_user.id, "2FA_ENABLED")
 
-    url = otpauth_url(secret, "PaltoFunPayBot", str(msg.from_user.id))
+    url = otpauth_url(secret, "Help Funpay by yasha", str(msg.from_user.id))
     await msg.answer(
         "🔐 <b>2FA включена!</b>\n\n"
         "<b>Шаг 1.</b> Установите Google Authenticator (или Authy / 1Password / Microsoft Authenticator):\n"
         "  • Android: <code>play.google.com/store/apps/details?id=com.google.android.apps.authenticator2</code>\n"
         "  • iOS: <code>apps.apple.com/app/google-authenticator/id388497605</code>\n\n"
         "<b>Шаг 2.</b> Откройте приложение → «+» → «Ввести ключ настройки» и введите:\n\n"
-        f"  Аккаунт: <code>PaltoFunPayBot</code>\n"
+        f"  Аккаунт: <code>Help Funpay by yasha</code>\n"
         f"  Ключ: <code>{secret}</code>\n"
         f"  Тип: <i>По времени</i>\n\n"
         f"<b>Шаг 3.</b> Проверьте — текущий код приложения должен совпадать с этим:\n"

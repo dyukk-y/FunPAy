@@ -1,5 +1,5 @@
 """
-PaltoFunPayBot — точка входа.
+Help Funpay by yasha — точка входа (основано на PaltoFunPayBot © PaltoProjects).
 
 Если что-то падает на старте — пишет полный traceback в data/logs/startup_error.log
 и не закрывает консоль, а ждёт Enter, чтобы можно было прочитать ошибку.
@@ -73,15 +73,16 @@ def _main_safe() -> None:
 
         # Фирменный баннер
         BANNER = r"""
-  ____       _ _        _____           ____             ____        _
- |  _ \ __ _| | |_ ___ |  ___|   _ _ __ |  _ \ __ _ _   _| __ )  ___ | |_
- | |_) / _` | | __/ _ \| |_ | | | | '_ \| |_) / _` | | | |  _ \ / _ \| __|
- |  __/ (_| | | || (_) |  _|| |_| | | | |  __/ (_| | |_| | |_) | (_) | |_
- |_|   \__,_|_|\__\___/|_|   \__,_|_| |_|_|   \__,_|\__, |____/ \___/ \__|
-                                                    |___/
+  _   _      _         _____                                 _
+ | | | | ___| |_ __   |  ___|   _ _ __  _ __   __ _ _   _   | |__  _   _
+ | |_| |/ _ \ | '_ \  | |_ | | | | '_ \| '_ \ / _` | | | |  | '_ \| | | |
+ |  _  |  __/ | |_) | |  _|| |_| | | | | |_) | (_| | |_| |  | |_) | |_| |
+ |_| |_|\___|_| .__/  |_|   \__,_|_| |_| .__/ \__,_|\__, |  |_.__/ \__, |
+              |_|                      |_|          |___/          |___/
+                                   y a s h a
 """
         print("\033[36m" + BANNER + "\033[0m")  # cyan
-        print("\033[35m" + "  Telegram-бот для FunPay" + "\033[0m\n")
+        print("\033[35m" + "  Help Funpay by yasha — помощник продавца FunPay (основано на PaltoFunPayBot)" + "\033[0m\n")
 
         # ─── Обработка CLI-аргументов ────────────────────────────────────
         # python main.py --setup-proxy   — заново настроить прокси без перезапуска визарда целиком
@@ -225,7 +226,7 @@ def _main_safe() -> None:
             )
 
             print("\n" + "=" * 64)
-            print(" 🤖 PaltoFunPayBot — первичная настройка")
+            print(" 🤖 Help Funpay by yasha — первичная настройка")
             print("=" * 64 + "\n")
 
             if not s.token:
@@ -311,38 +312,17 @@ def _main_safe() -> None:
 
         # ─── Слэш-команды в меню Telegram ───────────────────────────────────
 
+        # В меню Telegram — только главное (остальные команды тоже работают: /about, /logs, /sys, …)
         BOT_COMMANDS = [
-            BotCommand(command="menu", description="открыть главное меню"),
-            BotCommand(command="profile", description="посмотреть статистику аккаунта"),
-            BotCommand(command="balance", description="посмотреть баланс аккаунта"),
+            BotCommand(command="menu", description="главное меню"),
+            BotCommand(command="ads", description="реклама: заказы и канал"),
+            BotCommand(command="sales", description="автоответы и обучение"),
+            BotCommand(command="lots", description="тексты и цены лотов"),
+            BotCommand(command="golden_key", description="обновить golden_key"),
+            BotCommand(command="balance", description="баланс FunPay"),
+            BotCommand(command="profile", description="статистика аккаунта"),
             BotCommand(command="restart", description="перезапустить бота"),
-            BotCommand(command="golden_key", description="обновить golden_key (токен FunPay)"),
-            BotCommand(command="ban", description="добавить пользователя в чёрный список"),
-            BotCommand(command="unban", description="удалить пользователя из чёрного списка"),
-            BotCommand(command="black_list", description="показать чёрный список"),
-            BotCommand(command="upload_chat_img", description="(чат) загрузить изображение на FunPay"),
-            BotCommand(command="upload_offer_img", description="(лот) загрузить изображение на FunPay"),
-            BotCommand(command="test_lot", description="создать тестовый ключ автовыдачи"),
-            BotCommand(command="logs", description="скачать текущий лог-файл"),
-            BotCommand(command="about", description="информация о боте"),
-            BotCommand(command="sys", description="системная информация и нагрузка"),
-            BotCommand(command="del_logs", description="удалить старые лог-файлы"),
-            BotCommand(command="power_off", description="выключить бота"),
-            BotCommand(command="watermark", description="изменить водяной знак"),
-            BotCommand(command="check_updates", description="проверить наличие обновлений"),
-            BotCommand(command="update", description="обновить бота с GitHub"),
-            BotCommand(command="plugins", description="каталог плагинов"),
-            BotCommand(command="test_msg", description="тестовое уведомление о сообщении"),
-            BotCommand(command="login", description="ввести 2FA-код"),
-            BotCommand(command="2fa_setup", description="включить 2FA"),
-            BotCommand(command="2fa_off", description="выключить 2FA"),
-            BotCommand(command="audit", description="журнал действий"),
-            BotCommand(command="export_settings", description="скачать бэкап настроек"),
-            BotCommand(command="gen_desc", description="сгенерировать описание лота через ИИ"),
-            BotCommand(command="ads", description="заказы рекламы: ссылка на пост покупателю"),
-            BotCommand(command="sales", description="анализ переписки и автопродажи"),
-            BotCommand(command="lots", description="тексты и цены лотов (автообновление)"),
-            BotCommand(command="price", description="быстро поменять цену: /price ID 150"),
+            BotCommand(command="logs", description="скачать лог"),
         ]
 
         # ─── Запуск фоновых сервисов ─────────────────────────────────────────
@@ -368,6 +348,8 @@ def _main_safe() -> None:
             await lot_texts_scheduler.start()
             from modules.sales_brain import start_learning
             await start_learning()
+            from modules import ad_autopost
+            await ad_autopost.start()
             await online_keeper.start()
             await auto_lift.start()
             await ai_assistant.start()
@@ -518,10 +500,12 @@ def _main_safe() -> None:
             from bot.handlers.lot_texts import router as lot_texts_router
             from bot.handlers.sales_brain import router as sales_brain_router
             from bot.handlers.ad_orders import router as ad_orders_router
+            from bot.handlers.ad_autopost import router as ad_autopost_router
 
             dp.include_router(setup_router)
             dp.include_router(twofa_router)      # /login, /2fa_setup и т.д. — до auth
             dp.include_router(golden_key_router) # 🔑 смена golden_key с телефона
+            dp.include_router(ad_autopost_router)  # 📣 кнопки автопубликации
             dp.include_router(ad_orders_router)  # 📢 заказы рекламы (ссылка на пост)
             dp.include_router(lot_texts_router)  # 📝 тексты и цены лотов
             dp.include_router(sales_brain_router)  # 🧠 анализ переписки и автопродажи
@@ -557,6 +541,13 @@ def _main_safe() -> None:
                 await event_bus.emit(Event.BOT_STARTED, fp_account)
             except Exception as e:
                 logger.warning(f"Не удалось отправить BOT_STARTED: {e}")
+            # Брендинг и проверка канала для автопубликации (в фоне, не задерживают старт)
+            try:
+                from utils import branding
+                from modules import ad_autopost as _ap
+                _bg = [asyncio.create_task(branding.apply(bot)), asyncio.create_task(_ap.check_channel_on_start())]
+            except Exception as e:
+                logger.debug(f"branding/channel: {e}")
             # Если прошлый запуск закончился сбоем — сообщаем админам причину
             try:
                 report = health.pop_crash_report()

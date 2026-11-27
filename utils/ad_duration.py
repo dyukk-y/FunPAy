@@ -19,6 +19,9 @@ class Duration:
     where: str                 # «в канале» / «в истории»
     source: str = ""           # откуда взяли: «название», «описание», «по умолчанию»…
     unit: str = ""             # в каких единицах было в лоте: hour/day/week/month
+    top_hours: int = 0         # «1/24» — 1 час в топе (без других постов после рекламы)
+    pin: bool = False          # в лоте есть «закреп»
+    pin_hours: int = 0         # сколько держать закреп (0 — весь срок)
 
     @property
     def forever(self) -> bool:
@@ -63,18 +66,55 @@ def find_duration(text: str):
     return (best[1], best[2]) if best else None
 
 
+# «1/24», «2/48», «1/0» — формат рекламы: часы в топе / часы в ленте (0 — без удаления)
+_TOP_FEED = re.compile(r"(?<![\d.,/])(\d{1,2})\s*/\s*(\d{1,3})(?![\d.,/])")
+_TOP_WORDS = re.compile(r"\bтоп\w*\s*(?:на\s*)?(\d{1,2})\s*(?:ч|час)", re.I)
+_PIN = re.compile(r"закреп|закрепл|\bpin", re.I)
+_PIN_HOURS = re.compile(r"закреп\w*\s*(?:на\s*)?(\d{1,4})\s*(ч\b|час\w*|сут\w*|д\b|дн\w*|день)", re.I)
+
+
+def _top_feed(text: str):
+    """«1/24» → (1, 24); «1/0» → (1, FOREVER); None — формата нет."""
+    m = _TOP_FEED.search(_norm(text))
+    if not m:
+        return None
+    top, feed = int(m.group(1)), int(m.group(2))
+    # правая часть — реальный срок в ленте (0 — навсегда, 6/12/24/48/72…), иначе это не формат рекламы
+    if top < 1 or top > 24 or (feed and (feed < 6 or feed % 6 or feed < top)):
+        return None
+    return top, (FOREVER if feed == 0 else feed)
+
+
+def _extras(full: str, d: Duration) -> Duration:
+    t = _norm(full)
+    if not d.top_hours:
+        m = _TOP_WORDS.search(t)
+        if m:
+            d.top_hours = int(m.group(1))
+    if _PIN.search(t):
+        d.pin = True
+        m = _PIN_HOURS.search(t)
+        if m:
+            n = int(m.group(1))
+            d.pin_hours = n * (24 if not m.group(2).lower().startswith("ч") else 1)
+    return d
+
+
 def detect(title: str, description: str = "", params: str = "", default_hours: Optional[int] = None) -> Optional[Duration]:
     """Ищет срок сначала в названии, потом в параметрах и описании лота."""
     full = " ".join([title or "", params or "", description or ""])
     where = "в истории" if _STORY.search(_norm(title or "") or _norm(full)) else "в канале"
     for src, text in (("название лота", title), ("параметры лота", params), ("описание лота", description)):
+        tf = _top_feed(text)
+        if tf:
+            return _extras(full, Duration(tf[1], where, src, "hour", top_hours=tf[0]))
         found = find_duration(text)
         if found is not None:
-            return Duration(found[0], where, src, found[1])
+            return _extras(full, Duration(found[0], where, src, found[1]))
     if where == "в истории":
-        return Duration(24, where, "история в Telegram живёт 24 часа", "hour")
+        return _extras(full, Duration(24, where, "история в Telegram живёт 24 часа", "hour"))
     if default_hours:
-        return Duration(default_hours, where, "срок по умолчанию")
+        return _extras(full, Duration(default_hours, where, "срок по умолчанию"))
     return None
 
 

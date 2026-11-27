@@ -13,23 +13,30 @@ def _e(b: bool) -> str:
 
 def kb_unauthorized() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📢 Канал @paltofunpaybot", url="https://t.me/paltofunpaybot")],
-        [InlineKeyboardButton(text="🌐 GitHub PaltoFunPayBot", url="https://github.com/PaltoProjects/PaltoFunPayBot")],
+        [InlineKeyboardButton(text="ℹ️ О боте", callback_data="info:about")],
     ])
 
 
 def kb_main_menu() -> InlineKeyboardMarkup:
+    """Главное меню: только самое нужное. Всё остальное — в «⚙️ Все настройки»."""
     b = InlineKeyboardBuilder()
-    b.button(text="📢 Заказы рекламы", callback_data="ad:menu")
-    b.button(text="🧠 Анализ и автопродажи", callback_data="sb:main")
-    b.button(text="📝 Тексты и цены лотов", callback_data="lt:main")
-    b.button(text="🔑 Обновить golden_key", callback_data="gk:ask")
-    b.button(text="⚙️ Основные модули", callback_data="menu:core")
+    b.button(text="📢 Реклама", callback_data="ad:menu")
+    b.button(text="🧠 Автоответы", callback_data="sb:main")
+    b.button(text="📝 Тексты и цены", callback_data="lt:main")
+    b.button(text="🔑 golden_key", callback_data="gk:ask")
+    b.button(text="⚙️ Все настройки", callback_data="menu:more")
+    b.adjust(2, 2, 1)
+    return b.as_markup()
+
+
+def kb_more() -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    b.button(text="⚙️ Модули (вкл/выкл)", callback_data="menu:core")
     b.button(text="🤖 Автоматизация", callback_data="menu:automation")
-    b.button(text="📊 Управление и Аналитика", callback_data="menu:analytics")
-    b.button(text="🔧 Система и Конфиги", callback_data="menu:system")
-    b.button(text="🚪 Выйти", callback_data="menu:exit")
-    b.adjust(1, 1, 1, 1, 2, 2, 1)
+    b.button(text="📊 Статистика", callback_data="menu:analytics")
+    b.button(text="🔧 Система", callback_data="menu:system")
+    b.button(text="⬅️ Назад", callback_data="menu:main")
+    b.adjust(2, 2, 1)
     return b.as_markup()
 
 
@@ -46,7 +53,7 @@ def kb_core_modules(s) -> InlineKeyboardMarkup:
     b.button(text=f"{_e(s.legacy_message_mode.enabled)} Устаревший режим сообщений", callback_data="core:t:legacy_message_mode")
     b.button(text="ℹ️ Инфо", callback_data="core:info")
     b.button(text=f"{_e(s.read_receipt.enabled)} Не отмечать прочитанным", callback_data="core:t:read_receipt")
-    b.button(text="⬅️ Назад", callback_data="menu:main")
+    b.button(text="⬅️ Назад", callback_data="menu:more")
     b.adjust(2, 2, 2, 2, 1, 1)
     return b.as_markup()
 
@@ -63,7 +70,7 @@ def kb_automation() -> InlineKeyboardMarkup:
     b.button(text="⭐ Ответ на отзывы", callback_data="auto:review")
     b.button(text="🧠 ИИ-помощник", callback_data="auto:ai")
     b.button(text="💸 Авто-вывод", callback_data="auto:withdraw")
-    b.button(text="⬅️ Назад", callback_data="menu:main")
+    b.button(text="⬅️ Назад", callback_data="menu:more")
     b.adjust(2, 2, 2, 2, 1)
     return b.as_markup()
 
@@ -269,7 +276,7 @@ def kb_analytics() -> InlineKeyboardMarkup:
     b.button(text="📝 Шаблоны ответов", callback_data="ana:templates")
     b.button(text="🚫 Чёрный список", callback_data="ana:blacklist")
     b.button(text="👥 Пользователи", callback_data="ana:users")
-    b.button(text="⬅️ Назад", callback_data="menu:main")
+    b.button(text="⬅️ Назад", callback_data="menu:more")
     b.adjust(2, 2, 1, 1)
     return b.as_markup()
 
@@ -355,7 +362,7 @@ def kb_system() -> InlineKeyboardMarkup:
     b.button(text="💧 Водяной знак", callback_data="sys:watermark")
     b.button(text="📊 Статус (/sys)", callback_data="sys:status")
     b.button(text="🔄 Проверить обновления", callback_data="sys:updates")
-    b.button(text="⬅️ Назад", callback_data="menu:main")
+    b.button(text="⬅️ Назад", callback_data="menu:more")
     b.adjust(1, 2, 2, 2, 2, 1, 1)
     return b.as_markup()
 
