@@ -133,9 +133,9 @@ class AutoReviewReplySettings(BaseModel):
 
 class AskReviewSettings(BaseModel):
     """Просьба оставить отзыв после подтверждения заказа."""
-    enabled: bool = False
-    text: str = "Спасибо за покупку! Будем благодарны за отзыв 🙏"
-    delay_minutes: int = 10
+    enabled: bool = True
+    text: str = "Если не тяжело, напишите отзыв пожалуйста о рекламе, нам важно ваше мнение 😉"
+    delay_minutes: int = 0                # 0 — сразу следующим сообщением
 
 
 class AutoActivationSettings(BaseModel):
@@ -306,8 +306,8 @@ class ReadReceiptSettings(BaseModel):
 
 class OrderConfirmReplySettings(BaseModel):
     """Ответ на подтверждение заказа покупателем."""
-    enabled: bool = False
-    text: str = "Спасибо за подтверждение! Будем рады видеть вас снова 🙏"
+    enabled: bool = True
+    text: str = "Был рад посотрудничать, будем ждать вас вновь! ❤️"
 
 
 class OrderPaidReplySettings(BaseModel):
@@ -315,6 +315,18 @@ class OrderPaidReplySettings(BaseModel):
     enabled: bool = True
     text: str = "Пришлите пост на @theaugustine"
     delay_sec: int = 3                    # пауза, чтобы ответ пришёл после системного сообщения FunPay
+
+
+class AdFlowSettings(BaseModel):
+    """
+    Заказ рекламы (форк): после оплаты бот ждёт от вас ссылку на пост,
+    затем сам пишет покупателю ссылку и когда можно подтвердить заказ.
+    В шаблоне: {link} — ссылка, {where} — «в канале»/«в истории»,
+    {until} — «сейчас или по истечении 24 часов», {duration} — «24 часа», $username.
+    """
+    enabled: bool = True
+    template: str = "{link} — реклама {where}.\nПодтвердить лот можете {until}."
+    default_hours: int = 0                # срок, если в лоте не найден (0 — спросить у вас)
 
 
 class WatermarkSettings(BaseModel):
@@ -413,7 +425,7 @@ class SalesBrainSettings(BaseModel):
     где первым написал покупатель.
     """
     collect: bool = True                  # запоминать переписку (локально, в data/sales_brain.db)
-    mode: str = "off"                     # off | suggest | auto
+    mode: str = "suggest"                 # off | suggest | auto
     suggest_threshold: float = 0.45       # с какой похожести вопроса предлагать ответ
     auto_threshold: float = 0.6           # с какой похожести отвечать самому
     auto_delay_min: int = 15              # пауза перед автоответом, сек (успеть ответить самому)
@@ -475,6 +487,7 @@ class Settings(BaseModel):
     lot_texts: LotTextsSettings = Field(default_factory=LotTextsSettings)
     sales_brain: SalesBrainSettings = Field(default_factory=SalesBrainSettings)
     order_paid_reply: OrderPaidReplySettings = Field(default_factory=OrderPaidReplySettings)
+    ad_flow: AdFlowSettings = Field(default_factory=AdFlowSettings)
     env_applied: Dict[str, str] = Field(default_factory=dict)  # отпечатки применённых ENV (см. utils/env_config.py)
 
 
@@ -532,6 +545,18 @@ class ConfigManager:
                     username=settings.funpay.username,
                 )]
                 settings.funpay.active_index = 0
+                need_save = True
+
+            # Форк (один раз): тексты после подтверждения заказа и подсказки ответов
+            if not migrations.get("fork_confirm_texts_v1"):
+                settings.order_confirm_reply.enabled = True
+                settings.order_confirm_reply.text = OrderConfirmReplySettings().text
+                settings.ask_review.enabled = True
+                settings.ask_review.text = AskReviewSettings().text
+                settings.ask_review.delay_minutes = 0
+                if settings.sales_brain.mode == "off":
+                    settings.sales_brain.mode = "suggest"
+                migrations["fork_confirm_texts_v1"] = True
                 need_save = True
 
             # Форк: старый текст ответа после оплаты по умолчанию → новый

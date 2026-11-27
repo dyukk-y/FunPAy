@@ -276,7 +276,7 @@ BUILTIN_COMMANDS = {
     "ban", "unban", "black_list", "upload_chat_img", "upload_offer_img",
     "test_lot", "logs", "about", "sys", "del_logs", "power_off",
     "watermark", "check_updates", "update", "plugins", "test_msg", "login",
-    "2fa_setup", "2fa_off", "audit", "export_settings", "gen_desc", "lots", "price", "sales",
+    "2fa_setup", "2fa_off", "audit", "export_settings", "gen_desc", "lots", "price", "sales", "ads",
 }
 
 

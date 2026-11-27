@@ -89,7 +89,10 @@ def main_text() -> str:
     if sb.importing():
         lines.append("\n⏳ <i>Идёт изучение переписки…</i>")
     if c.mode == "off":
-        lines.append("\n<i>С чего начать: «📥 Изучить переписку» → «📚 База ответов» → режим «💡 Подсказки».</i>")
+        lines.append("\n<i>Режим выключен — бот только учится. Включите «💡 Подсказки», чтобы получать готовые ответы.</i>")
+    elif not answers:
+        lines.append("\n<i>База пока пустая: нажмите «📥 Изучить переписку» — дальше бот будет учиться сам "
+                     "(каждые 20 минут по вашим новым ответам).</i>")
     return "\n".join(lines)
 
 
@@ -432,15 +435,15 @@ async def sb_add_a(msg: types.Message, state: FSMContext) -> None:
 # Кнопки под подсказкой
 # ═════════════════════════════════════════════════════════════════════════════
 
-async def _send_pending(target: types.Message, pid: str, text: str) -> None:
+async def _send_pending(target: types.Message, pid: str, text: str, answer_id: int = 0) -> None:
     p = sb.pending.get(pid)
     if not p:
         await target.answer("⌛ Подсказка устарела — ответьте через «📨 Ответить»."); return
     ok = await sb.send(p["acc"], p["chat_id"], text, p["buyer"], p["chat_name"])
     if ok:
-        sb.note_manual(p["acc"], p["chat_id"], text)
-        if p.get("answer_id"):
-            a = sb.get_answer(p["answer_id"])
+        sb.note_manual(p["acc"], p["chat_id"], text)   # ваш выбор — бот учится на нём
+        if answer_id:
+            a = sb.get_answer(answer_id)
             if a:
                 sb.update_answer(a.id, sent=a.sent + 1)
         sb.pending.pop(pid, None)
@@ -453,14 +456,20 @@ async def _send_pending(target: types.Message, pid: str, text: str) -> None:
 async def sb_go(c: types.CallbackQuery) -> None:
     if await _deny(c):
         return
-    pid = c.data.split(":")[2]
+    parts = c.data.split(":")
+    pid = parts[2]
+    idx = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else 0
     p = sb.pending.get(pid)
+    if not p:
+        await c.answer("Подсказка устарела", show_alert=True); return
+    variants = p.get("variants") or [{"answer": p["answer"], "answer_id": p.get("answer_id", 0)}]
+    v = variants[min(idx, len(variants) - 1)]
     await c.answer("Отправляю…")
     try:
         await c.message.edit_reply_markup(reply_markup=None)
     except Exception:
         pass
-    await _send_pending(c.message, pid, p["answer"] if p else "")
+    await _send_pending(c.message, pid, v["answer"], v.get("answer_id", 0))
 
 
 @router.callback_query(F.data.startswith("sb:edit:"))
@@ -472,7 +481,9 @@ async def sb_edit_pending(c: types.CallbackQuery, state: FSMContext) -> None:
         await c.answer("Подсказка устарела", show_alert=True); return
     await state.set_state(SalesStates.edit_pending)
     await state.update_data(pid=pid)
-    await c.message.answer("✏️ Пришлите исправленный ответ — отправлю его покупателю.",
+    first = (sb.pending[pid].get("variants") or [{"answer": sb.pending[pid].get("answer", "")}])[0]["answer"]
+    await c.message.answer("✏️ Пришлите исправленный ответ — отправлю его покупателю.\n"
+                           f"Нажмите на текст, чтобы скопировать:\n<code>{html.escape(first[:1500])}</code>",
                            reply_markup=_kb([[("❌ Отмена", f"sb:skip:{pid}")]]))
     await c.answer()
 

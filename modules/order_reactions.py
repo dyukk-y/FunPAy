@@ -65,9 +65,20 @@ async def _handle_order_confirmed(order) -> None:
         logger.info(f"order_confirm_reply → заказ {order_id}, покупатель {buyer}: "
                     f"{'ok' if ok else 'НЕ отправлено'}")
 
-    # 2) Через delay просим отзыв
+    # Заказ рекламы закрыт — больше не ждём ссылку на пост
+    try:
+        from modules.ad_orders import forget_order
+        forget_order(order_id)
+    except Exception:
+        pass
+
+    # 2) Просим отзыв: сразу следующим сообщением (пауза 0) или через N минут
     if cfg_review.enabled and cfg_review.text:
         delay = max(0, cfg_review.delay_minutes) * 60
+        if delay == 0:
+            await asyncio.sleep(2)  # чтобы сообщения пришли по порядку
+            await _ask_review_later(client, chat_id, cfg_review.text, 0, order_id=order_id, sub_kw=sub_kw)
+            return
         t = asyncio.create_task(_ask_review_later(
             client, chat_id, cfg_review.text, delay, order_id=order_id, sub_kw=sub_kw
         ))
@@ -185,6 +196,14 @@ async def paid_from_system_message(message) -> None:
 
 @event_bus.on(Event.ORDER_PAID)
 async def handle_order_paid(order) -> None:
+    # 📢 Заказ рекламы: карточка вам в Telegram + ожидание ссылки на пост
+    try:
+        from modules.ad_orders import on_paid
+        t = asyncio.create_task(on_paid(order))
+        _bg_tasks.add(t)
+        t.add_done_callback(_bg_tasks.discard)
+    except Exception as e:
+        logger.debug(f"ad_orders: {e}")
     try:
         cfg = config_manager.settings.order_paid_reply
         if not cfg.enabled or not (cfg.text or "").strip():

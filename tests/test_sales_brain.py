@@ -180,7 +180,7 @@ def test_live_suggest(sb, live):
     m = M(9, "Добрый день, есть в наличии?", chat_id=50, author="newbie")
     client, notes = live(m, history=[m])
     assert client.sent == [] and len(sb.pending) == 1
-    assert "Подсказка" in notes[-1]
+    assert "Готовый ответ" in notes[-1]
 
 
 def test_live_auto_only_when_allowed(sb, live):
@@ -234,3 +234,25 @@ def test_live_handler_never_raises(sb, live, monkeypatch):
     sb.cfg().mode = "auto"
     m = M(9, "есть?", chat_id=90)
     live(m, history=[m])                                      # не упало
+
+
+def test_top_answers_and_learning(sb):
+    _seed(sb)
+    assert sb.learn_now() is not None               # первый раз — строит базу
+    assert sb.learn_now() is None                   # без новых ответов — не пересобирает
+    chat(sb, 20, "new", [M(30, "Сколько стоит пост?"), M(ME, "Пост стоит 500₽")])
+    chat(sb, 21, "new2", [M(31, "Сколько стоит реклама поста?"), M(ME, "500₽ за пост")])
+    res = sb.learn_now()                            # появились новые ответы — учится
+    assert res is not None and res[0] >= 1
+    tops = sb.top_answers("а сколько стоит пост?", 3, 0.3)
+    assert tops and "500" in tops[0][0].answer
+
+
+def test_suggest_shows_variants(sb, live):
+    sb.add_answer(["есть в наличии?"], "Да, есть!")
+    sb.add_answer(["в наличии ещё есть?"], "Есть, оплачивайте 🙂")
+    sb.cfg().mode = "suggest"
+    m = M(9, "есть в наличии?", chat_id=95, author="x")
+    client, notes = live(m, history=[m])
+    pid = list(sb.pending)[-1]
+    assert len(sb.pending[pid]["variants"]) == 2 and "<b>2.</b>" in notes[-1]

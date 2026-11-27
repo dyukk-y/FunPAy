@@ -264,6 +264,10 @@ async def notify_message(message) -> None:
             from utils.fp_system import is_system_text, parse_paid
             if author_id == 0 or is_system_text(msg_text):
                 paid = parse_paid(msg_text)
+                if paid and config_manager.settings.ad_flow.enabled:
+                    # Вместо «Куплено: лот» приходит карточка заказа рекламы (modules/ad_orders.py)
+                    logger.info(f"📨 оплата {paid[1]}: уведомление — карточкой заказа рекламы")
+                    return
                 if not paid:
                     # Остальные системные сообщения FunPay (подтверждение, отзыв,
                     # возврат…) не пересылаем — по ним приходят отдельные уведомления
@@ -306,6 +310,8 @@ async def notify_message(message) -> None:
 async def notify_new_order(order) -> None:
     if not config_manager.settings.notifications.new_orders:
         return
+    if config_manager.settings.ad_flow.enabled:
+        return  # всё о заказе — в одной карточке «📢 Куплена реклама» (modules/ad_orders.py)
     style = config_manager.settings.notification_style
     title    = _html.escape(str(getattr(order, "description", None) or getattr(order, "title", "?")))
     price    = getattr(order, "price", "?")
@@ -331,6 +337,8 @@ async def notify_new_order(order) -> None:
 async def notify_order_paid(order) -> None:
     if not config_manager.settings.notifications.order_paid:
         return
+    if config_manager.settings.ad_flow.enabled:
+        return  # всё о заказе — в одной карточке «📢 Куплена реклама» (modules/ad_orders.py)
     style    = config_manager.settings.notification_style
     client   = accounts_manager.client_for(order)
     order_id = getattr(order, "id", "?")

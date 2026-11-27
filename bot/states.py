@@ -57,3 +57,11 @@ class SalesStates(StatesGroup):
     add_question = State()
     add_answer = State()
     edit_pending = State()
+
+
+class AdStates(StatesGroup):
+    """Заказы рекламы: ждём ссылку/срок/шаблон."""
+    link = State()
+    duration = State()
+    choose = State()
+    template = State()

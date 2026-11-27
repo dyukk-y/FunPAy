@@ -143,13 +143,28 @@ _STOP = set("""
 _STOP |= {w[:5] for w in list(_STOP) if len(w) > 5}
 
 
+_ENDINGS = sorted("""ами ями ого его ому ему ыми ими иях ах ях ов ев ей ам ям ом ем ой ий ый ая яя ое ее ые ие
+ую юю ия ья ье а я о е ы и у ю ь""".split(), key=len, reverse=True)
+
+
+def _stem(w: str) -> str:
+    """Простой стемминг для русского: «поста»/«посту»/«пост» → «пост»."""
+    if w.isdigit() or not re.search("[а-я]", w):
+        return w[:6]
+    for e in _ENDINGS:
+        if w.endswith(e) and len(w) - len(e) >= 3:
+            w = w[: -len(e)]
+            break
+    return w[:5]
+
+
 def tokens(text: str) -> frozenset:
     words = re.findall(r"[a-zа-я0-9]+", (text or "").lower().replace("ё", "е"))
     out = set()
     for w in words:
         if w in _STOP or (len(w) < 2 and not w.isdigit()):
             continue
-        out.add(w[:5] if len(w) > 5 and not w.isdigit() else w)  # грубый «стемминг» для русского
+        out.add(_stem(w))
     return frozenset(out)
 
 
@@ -574,6 +589,73 @@ def best_answer(text: str) -> Tuple[Optional[Answer], float]:
     return best, best_s
 
 
+def top_answers(text: str, k: int = 3, min_score: float = 0.0) -> List[Tuple[Answer, float]]:
+    """До k лучших разных ответов из базы, похожесть ≥ min_score."""
+    t = tokens(text)
+    if not t:
+        return []
+    scored = [(a, a.score(t)) for a in list_answers()]
+    scored = [x for x in scored if x[1] >= min_score and x[1] > 0]
+    scored.sort(key=lambda x: (x[1], x[0].uses), reverse=True)
+    out, seen = [], set()
+    for a, sc in scored:
+        key = re.sub(r"\s+", " ", a.answer.strip().lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append((a, sc))
+        if len(out) >= k:
+            break
+    return out
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Постоянное обучение: база ответов обновляется сама
+# ──────────────────────────────────────────────────────────────────────────────
+
+LEARN_EVERY_SEC = 20 * 60
+_learn_task: Optional[asyncio.Task] = None
+_last_learn_mark: Optional[int] = None
+
+
+def _learn_mark() -> int:
+    """Сколько ваших ответов в учитываемых чатах — изменилось ⇒ есть чему учиться."""
+    r = _query("""SELECT COUNT(*) AS n FROM messages m JOIN chats c ON c.acc=m.acc AND c.chat_id=m.chat_id
+                  WHERE c.started_by=? AND m.role=?""", (STARTED_BUYER, ROLE_ME))
+    return int(r[0]["n"]) if r else 0
+
+
+def learn_now() -> Optional[Tuple[int, int]]:
+    """Пересобрать базу, если появились новые ваши ответы. → (добавлено, обновлено) или None."""
+    global _last_learn_mark
+    mark = _learn_mark()
+    if mark == _last_learn_mark:
+        return None
+    res = rebuild_answers()
+    _last_learn_mark = mark
+    return res
+
+
+async def _learner_loop() -> None:
+    await asyncio.sleep(120)
+    loop = asyncio.get_running_loop()
+    while True:
+        try:
+            res = await loop.run_in_executor(None, learn_now)
+            if res and (res[0] or res[1]):
+                logger.info(f"🧠 База ответов обновлена по вашей переписке: +{res[0]} новых, обновлено {res[1]}")
+        except Exception as e:
+            logger.warning(f"sales_brain learner: {e}")
+        await asyncio.sleep(LEARN_EVERY_SEC)
+
+
+async def start_learning() -> None:
+    global _learn_task
+    if _learn_task is None or _learn_task.done():
+        _learn_task = asyncio.create_task(_learner_loop(), name="sales-learner")
+        logger.info("🧠 Обучение на ваших ответах: включено (база обновляется каждые 20 мин)")
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Изучение истории
 # ──────────────────────────────────────────────────────────────────────────────
@@ -730,6 +812,16 @@ async def _react(client, message, text: str, buyer: str) -> None:
         acc, chat_id = client.index, getattr(message, "chat_id")
         chat_name = getattr(message, "chat_name", "") or buyer
         msg_ts = time.time()
+        # Покупатель присылает текст поста по заказу рекламы, или очень длинное
+        # сообщение — шаблонный ответ тут не нужен
+        try:
+            from modules.ad_orders import chats_waiting_post
+            if str(chat_id) in chats_waiting_post():
+                return
+        except Exception:
+            pass
+        if len(text) > 400:
+            return
         ans, score = best_answer(text)
         can_auto = (c.mode == "auto" and ans is not None and ans.auto and not ans.risky
                     and score >= c.auto_threshold
@@ -749,8 +841,10 @@ async def _react(client, message, text: str, buyer: str) -> None:
                               f"❓ {_esc(text[:300])}\n💬 {_esc(ans.answer[:500])}", None)
             return
 
-        if ans is not None and score >= c.suggest_threshold:
-            await _suggest(acc, chat_id, chat_name, buyer, text, ans.answer, f"из базы, {int(score * 100)}%", ans.id)
+        variants = top_answers(text, 3, c.suggest_threshold)
+        if variants:
+            await _suggest(acc, chat_id, chat_name, buyer, text,
+                           [(a.answer, a.id, f"{int(sc * 100)}%") for a, sc in variants])
             return
         if c.ai_suggest:
             draft = await ai_draft(text, buyer)
@@ -765,7 +859,7 @@ async def _react(client, message, text: str, buyer: str) -> None:
                         await _notify(acc, chat_id, chat_name,
                                       f"🧠 <b>ИИ ответил</b> {_esc(buyer)}\n❓ {_esc(text[:300])}\n💬 {_esc(draft[:500])}", None)
                     return
-                await _suggest(acc, chat_id, chat_name, buyer, text, draft, "ИИ в вашем стиле", 0)
+                await _suggest(acc, chat_id, chat_name, buyer, text, [(draft, 0, "ИИ в вашем стиле")])
     except Exception as e:
         logger.exception(f"sales_brain react: {e}")
 
@@ -775,20 +869,32 @@ def _esc(s: str) -> str:
     return H.escape(s or "")
 
 
-async def _suggest(acc, chat_id, chat_name, buyer, question, answer, source, answer_id) -> None:
+async def _suggest(acc, chat_id, chat_name, buyer, question, variants) -> None:
+    """variants: [(текст ответа, id в базе или 0, подпись)] — до 3 вариантов на выбор."""
     pid = _new_pid()
     pending[pid] = {"acc": acc, "chat_id": str(chat_id), "chat_name": chat_name, "buyer": buyer,
-                    "answer": answer, "answer_id": answer_id, "question": question, "ts": time.time()}
+                    "variants": [{"answer": a, "answer_id": i} for a, i, _ in variants],
+                    "answer": variants[0][0], "answer_id": variants[0][1], "question": question, "ts": time.time()}
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+    if len(variants) == 1:
+        send_row = [InlineKeyboardButton(text="✅ Отправить", callback_data=f"sb:go:{pid}:0")]
+    else:
+        send_row = [InlineKeyboardButton(text=f"✅ {n}", callback_data=f"sb:go:{pid}:{n - 1}")
+                    for n in range(1, len(variants) + 1)]
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Отправить", callback_data=f"sb:go:{pid}"),
-         InlineKeyboardButton(text="✏️ Изменить", callback_data=f"sb:edit:{pid}")],
-        [InlineKeyboardButton(text="📨 Ответить своим текстом", callback_data=f"qr:reply:{chat_id}@{acc}"),
+        send_row,
+        [InlineKeyboardButton(text="✏️ Изменить и отправить", callback_data=f"sb:edit:{pid}"),
          InlineKeyboardButton(text="🙈 Не надо", callback_data=f"sb:skip:{pid}")],
+        [InlineKeyboardButton(text="📨 Ответить своим текстом", callback_data=f"qr:reply:{chat_id}@{acc}")],
     ])
+    if len(variants) == 1:
+        body = f"💬 <code>{_esc(variants[0][0][:1500])}</code> <i>({_esc(variants[0][2])})</i>"
+    else:
+        body = "\n\n".join(f"<b>{n}.</b> <code>{_esc(a[:600])}</code> <i>({_esc(lbl)})</i>"
+                            for n, (a, _, lbl) in enumerate(variants, 1))
     await _notify(acc, chat_id, chat_name,
-                  f"💡 <b>Подсказка</b> для {_esc(buyer)} ({source})\n"
-                  f"❓ {_esc(question[:300])}\n\n💬 <code>{_esc(answer[:1500])}</code>", kb)
+                  f"💡 <b>Готовый ответ</b> для {_esc(buyer)}\n❓ {_esc(question[:300])}\n\n{body}\n\n"
+                  f"<i>{'Нажмите «Отправить»' if len(variants) == 1 else 'Нажмите номер варианта'} — отправлю покупателю.</i>", kb)
 
 
 async def _notify(acc, chat_id, chat_name, text, kb) -> None:

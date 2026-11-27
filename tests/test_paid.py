@@ -39,7 +39,10 @@ def notif(monkeypatch):
     monkeypatch.setattr(funpay_client.accounts_manager, "client_for", lambda m: client)
     monkeypatch.setattr(funpay_client.accounts_manager, "tag", lambda *a, **k: "")
     config_manager.settings.notifications.new_messages = True
-    return n, sent
+    old_ad = config_manager.settings.ad_flow.enabled
+    config_manager.settings.ad_flow.enabled = False   # без карточки заказа рекламы
+    yield n, sent
+    config_manager.settings.ad_flow.enabled = old_ad
 
 
 def _msg(author_id, text, author="FunPay"):
@@ -145,3 +148,11 @@ def test_old_mode_system_message_gets_system_author(monkeypatch):
     asyncio.run(cl._emit_message_from_chat(NS(id=778, name="Bob", last_message_text="привет", last_by_bot=False)))
     assert got[0].author_id == 0 and got[0].type.name == "ORDER_PURCHASED"
     assert got[1].author_id == 778
+
+
+def test_paid_message_replaced_by_ad_card(notif):
+    n, sent = notif
+    from config.settings import config_manager
+    config_manager.settings.ad_flow.enabled = True
+    asyncio.run(n.notify_message(_msg(0, PAID)))
+    assert sent == []          # вместо «Куплено» придёт карточка «📢 Куплена реклама»
