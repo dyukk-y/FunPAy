@@ -702,16 +702,32 @@ class FunPayClient:
     # FunPay не принимает сообщения длиннее 20 строк — режем как Cardinal.
     _MAX_LINES_PER_MESSAGE = 20
 
+    # Форк: и по длине — очень длинное сообщение FunPay может не принять
+    _MAX_CHARS_PER_MESSAGE = 1800
+
     @classmethod
     def _split_message(cls, text: str) -> List[str]:
-        """Разбивает текст на куски по 20 строк (лимит FunPay)."""
-        lines = str(text).split("\n")
-        chunks = []
-        while lines:
-            chunk = "\n".join(lines[:cls._MAX_LINES_PER_MESSAGE]).rstrip()
-            del lines[:cls._MAX_LINES_PER_MESSAGE]
-            if chunk:
-                chunks.append(chunk)
+        """Разбивает текст на куски: не больше 20 строк (лимит FunPay) и ~1800 символов."""
+        lines = []
+        for line in str(text).split("\n"):
+            while len(line) > cls._MAX_CHARS_PER_MESSAGE:            # очень длинная строка — режем по пробелу
+                cut = line.rfind(" ", 0, cls._MAX_CHARS_PER_MESSAGE)
+                cut = cut if cut > cls._MAX_CHARS_PER_MESSAGE // 2 else cls._MAX_CHARS_PER_MESSAGE
+                lines.append(line[:cut])
+                line = line[cut:].lstrip()
+            lines.append(line)
+        chunks, cur = [], []
+        for line in lines:
+            if cur and (len(cur) >= cls._MAX_LINES_PER_MESSAGE
+                        or len("\n".join(cur + [line])) > cls._MAX_CHARS_PER_MESSAGE):
+                chunk = "\n".join(cur).rstrip()
+                if chunk:
+                    chunks.append(chunk)
+                cur = []
+            cur.append(line)
+        chunk = "\n".join(cur).rstrip()
+        if chunk:
+            chunks.append(chunk)
         return chunks
 
     def send_message(self, chat_id, text: str, attempts: int = 3) -> bool:

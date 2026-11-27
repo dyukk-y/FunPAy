@@ -401,3 +401,24 @@ def test_non_ad_order_goes_usual_way(env):
         assert not any("Куплена реклама" in t for t in env.admin)
     finally:
         config_manager.settings.order_paid_reply = saved
+
+
+def test_polite_replies_and_early_yes(env):
+    env.pay("ACK00001", "Пост 24ч")
+    n = len(fp_texts(env))
+    env.buyer("Хорошо, сейчас пришлю")
+    env.buyer("да")                                  # «да» без текста — не пост
+    assert len(fp_texts(env)) == n                   # бот молча ждёт сам пост
+    env.buyer("Реклама нашего магазина: скидки на всё")
+    env.buyer("да")                                  # прислал текст и сразу «да» = «готово»
+    assert "Проверьте, пожалуйста, пост" in fp_texts(env)[-1]
+    env.buyer("да")
+    assert env.bot.channel_posts()[0][2] == "Реклама нашего магазина: скидки на всё"
+
+
+def test_split_long_funpay_message():
+    from core.funpay_client import FunPayClient
+    chunks = FunPayClient._split_message("слово " * 1000)
+    assert len(chunks) >= 3 and all(len(c) <= 1800 for c in chunks)
+    assert FunPayClient._split_message("a\nb") == ["a\nb"]
+    assert len(FunPayClient._split_message("\n".join(["x"] * 45))) == 3

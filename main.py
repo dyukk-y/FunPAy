@@ -530,7 +530,19 @@ def _main_safe() -> None:
             await start_background_modules()
             await start_funpay_if_configured()
 
-            me = await bot.get_me()
+            # Telegram может быть недоступен при старте (сбой сети у хостинга) — ждём связь,
+            # а не падаем: FunPay-часть уже работает
+            me = None
+            for _attempt, _pause in enumerate((5, 10, 20, 30, 60, 60, 60, 60), 1):
+                try:
+                    me = await bot.get_me()
+                    break
+                except Exception as e:
+                    logger.warning(f"Telegram недоступен ({type(e).__name__}) — повтор через {_pause} с "
+                                   f"(попытка {_attempt})")
+                    await asyncio.sleep(_pause)
+            if me is None:
+                me = await bot.get_me()   # последняя попытка: не вышло — сторож перезапустит бота
             logger.info(f"Telegram-бот запущен: @{me.username}")
             logger.info(f"FunPayAPI: {'установлен' if FUNPAY_AVAILABLE else 'НЕ установлен'}")
 
