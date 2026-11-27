@@ -237,6 +237,9 @@ async def channel_status(force: bool = False) -> Tuple[bool, str]:
                 msg = f"✅ Канал «{title}» подключён" + (f" (нет прав: {', '.join(missing)})" if missing else "")
         else:
             msg = f"⚠️ Бот не админ канала «{title or c.channel_id}» — добавьте его администратором"
+        if ok and not uname:
+            msg += (" · канал без публичной ссылки: ссылки на посты (t.me/c/…) откроются только у подписчиков — "
+                    "лучше задать каналу @username")
     except Exception as e:
         msg = (f"⚠️ Нет доступа к каналу {c.channel_id}: добавьте бота в канал администратором "
                f"с правом публикации ({type(e).__name__})")

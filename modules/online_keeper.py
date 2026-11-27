@@ -47,15 +47,17 @@ class OnlineKeeper:
         показывает, если FunPay разлогинил (golden_key устарел) — тогда шлём кнопку смены ключа.
         """
         loop = asyncio.get_running_loop()
-        last_check = 0.0
-        last_alert = 0.0
+        # None — «ещё не было»: время цикла отсчитывается от запуска сервера, и на свежем
+        # контейнере «0.0» означало бы «только что» (первое предупреждение молча пропускалось)
+        last_check = None
+        last_alert = None
         last_session = loop.time()          # при старте сессия свежая (её получил connect)
         while self._running:
             cfg = config_manager.settings.online_keeper
             try:
                 now = loop.time()
                 refresh = now - last_session >= self.SESSION_EVERY_SEC
-                if (cfg.enabled and now - last_check >= self.CHECK_EVERY_SEC) or refresh:
+                if (cfg.enabled and (last_check is None or now - last_check >= self.CHECK_EVERY_SEC)) or refresh:
                     last_check = now
                     if refresh:
                         last_session = now
@@ -68,7 +70,7 @@ class OnlineKeeper:
                         except Exception as e:
                             name = type(e).__name__
                             logger.warning(f"OnlineKeeper [{cl.alias}]: FunPay не ответил ({name}: {str(e)[:120]})")
-                            if "Unauthorized" in name and now - last_alert > self.ALERT_EVERY_SEC:
+                            if "Unauthorized" in name and (last_alert is None or now - last_alert > self.ALERT_EVERY_SEC):
                                 last_alert = now
                                 from bot.handlers.golden_key import notify_funpay_down
                                 await notify_funpay_down("FunPay разлогинил аккаунт — бот не в сети, "

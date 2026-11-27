@@ -449,3 +449,20 @@ def test_reset_while_queued(env):
     env.clock["t"] = e["post"]["publish_at"] + 1
     env.run(env.ap._tick())
     assert env.bot.channel_posts()[-1][2] == "Второй исправленный"
+
+
+def test_channel_status_messages(env):
+    ok, msg = asyncio.run(env.ap.channel_status(force=True))
+    assert ok and "Мой канал" in msg and "только у подписчиков" in msg      # канал без @username
+    env.bot.admin = False
+    ok, msg = asyncio.run(env.ap.channel_status(force=True))
+    assert not ok and "администратором" in msg
+
+
+def test_public_channel_link(env, monkeypatch):
+    async def chat(chat_id):
+        return NS(id=chat_id, username="mychannel", title="Мой канал")
+    monkeypatch.setattr(env.bot, "get_chat", chat)
+    env.pay("PUB00001", "Пост 24ч")
+    env.buyer("Текст"); env.buyer("готово"); env.buyer("да")
+    assert fp_texts(env)[-1].startswith("https://t.me/mychannel/10 — реклама в канале.")
