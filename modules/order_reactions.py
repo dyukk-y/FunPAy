@@ -156,6 +156,33 @@ async def confirmed_from_system_message(message) -> None:
         logger.exception(f"confirmed_from_system_message: {e}")
 
 
+@event_bus.on(Event.NEW_MESSAGE)
+async def paid_from_system_message(message) -> None:
+    """
+    Запасной путь для ответа после оплаты: системное «Покупатель X оплатил
+    заказ #ID. Лот…». Приходит сразу и уже с правильным ID чата.
+    Ответ — один раз на заказ (общая отметка с основным путём через ORDER_PAID).
+    """
+    try:
+        from utils.fp_system import is_system_text, parse_paid
+        text = getattr(message, "text", "") or ""
+        if getattr(message, "author_id", None) != 0 and not is_system_text(text):
+            return
+        parsed = parse_paid(text)
+        if not parsed:
+            return
+        lot, order_id, buyer = parsed
+        from types import SimpleNamespace
+        order = SimpleNamespace(id=order_id, buyer_username=buyer, chat_id=getattr(message, "chat_id", None),
+                                price="", description=lot)
+        acc = getattr(message, "_palto_acc", None)
+        if acc is not None:
+            order._palto_acc = acc
+        await handle_order_paid(order)
+    except Exception as e:
+        logger.exception(f"paid_from_system_message: {e}")
+
+
 @event_bus.on(Event.ORDER_PAID)
 async def handle_order_paid(order) -> None:
     try:

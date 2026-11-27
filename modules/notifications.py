@@ -260,9 +260,15 @@ async def notify_message(message) -> None:
         role_name = _html.escape(str(role_name))
         safe_body = _html.escape(body)
         paid = None
-        if author_id == 0 and getattr(style, "short_paid_messages", True):
-            from utils.fp_system import parse_paid
-            paid = parse_paid(msg_text)
+        if getattr(style, "short_paid_messages", True):
+            from utils.fp_system import is_system_text, parse_paid
+            if author_id == 0 or is_system_text(msg_text):
+                paid = parse_paid(msg_text)
+                if not paid:
+                    # Остальные системные сообщения FunPay (подтверждение, отзыв,
+                    # возврат…) не пересылаем — по ним приходят отдельные уведомления
+                    logger.info(f"📨 системное сообщение FunPay не пересылаю: {msg_text[:60]!r}")
+                    return
         if paid:
             # Системное «Покупатель … оплатил заказ … не забудьте…» → только лот
             header = f"{tag}🛒 <b>Куплено:</b> {_html.escape(paid[0] or 'лот')}"

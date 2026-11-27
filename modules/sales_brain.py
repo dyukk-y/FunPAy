@@ -199,6 +199,13 @@ def generalize_answer(answer: str, buyer: str) -> str:
 def classify(msg, own_id: Optional[int], acc: int = 0) -> str:
     author_id = getattr(msg, "author_id", None)
     mtype = getattr(getattr(msg, "type", None), "name", "NON_SYSTEM")
+    if (not mtype or mtype == "NON_SYSTEM") and author_id != own_id:
+        from utils.fp_system import is_system_text, message_type_name, parse_paid
+        _t = getattr(msg, "text", "") or ""
+        if is_system_text(_t):
+            # системное сообщение FunPay, пришедшее «от покупателя» (резервный режим чтения)
+            mtype = "ORDER_PURCHASED" if parse_paid(_t) else (message_type_name(_t) if message_type_name(_t) != "NON_SYSTEM" else "SYSTEM")
+            author_id = 0
     if author_id == 0 or (mtype and mtype != "NON_SYSTEM"):
         return ROLE_ORDER if mtype == "ORDER_PURCHASED" else ROLE_SYSTEM
     if getattr(msg, "is_employee", False) or getattr(msg, "is_support", False):

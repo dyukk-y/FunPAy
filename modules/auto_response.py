@@ -23,6 +23,10 @@ async def handle_new_message(message) -> None:
 
     if getattr(message, "author_id", None) == client.own_id:
         return
+    # Форк: на системные сообщения FunPay («оплатил заказ», «написал отзыв»…) не отвечаем
+    from utils.fp_system import is_system_text
+    if getattr(message, "author_id", None) == 0 or is_system_text(getattr(message, "text", "") or ""):
+        return
 
     author    = getattr(message, "author", "") or ""
     text_in   = (getattr(message, "text", "") or "").lower()

@@ -612,6 +612,24 @@ class FunPayClient:
         msg.type = None  # MessageTypes.NON_SYSTEM по умолчанию
         msg._palto_acc = self.index  # маршрутизация ответа в этот аккаунт
 
+        # Форк: системные сообщения FunPay («Покупатель … оплатил заказ …») здесь
+        # раньше приходили от имени покупателя — их пересылало как сообщение
+        # покупателя, на них мог реагировать автоответчик. Определяем по тексту.
+        try:
+            from utils.fp_system import is_system_text, message_type_name
+            if is_system_text(text):
+                from types import SimpleNamespace
+                msg.author_id = 0
+                msg.author = "FunPay"
+                msg.by_bot = False
+                try:
+                    from FunPayAPI.common.enums import MessageTypes
+                    msg.type = MessageTypes[message_type_name(text)]
+                except Exception:
+                    msg.type = SimpleNamespace(name=message_type_name(text))
+        except Exception:
+            pass
+
         await event_bus.emit(Event.NEW_MESSAGE, msg)
 
     def stop(self) -> None:

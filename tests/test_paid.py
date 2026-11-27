@@ -84,7 +84,7 @@ def test_paid_reply_once_per_order(paid):
     order = NS(id="ABCD1234", chat_id=55, buyer_username="Vasya", price=100, description="Пост")
     asyncio.run(orx.handle_order_paid(order))
     asyncio.run(orx.handle_order_paid(order))         # дубль события / перезапуск
-    assert out == [(55, "Присылайте текст рекламы на @theaugustine")]
+    assert out == [(55, "Пришлите пост на @theaugustine")]
     asyncio.run(orx.handle_order_paid(NS(id="ZZZZ0000", chat_id=56, buyer_username="Bob")))
     assert len(out) == 2
 
@@ -94,3 +94,54 @@ def test_paid_reply_disabled(paid):
     cfg.enabled = False
     asyncio.run(orx.handle_order_paid(NS(id="ABCD1234", chat_id=55, buyer_username="Vasya")))
     assert out == []
+
+
+# ─── Системные сообщения, пришедшие «от покупателя» (резервный режим) ─────────
+
+def test_fallback_system_message_is_short(notif):
+    n, sent = notif
+    # в резервном режиме автор — покупатель, ID — ID чата
+    asyncio.run(n.notify_message(_msg(5, PAID, author="Vasya123")))
+    assert sent == ["🛒 <b>Куплено:</b> Telegram, Реклама, Пост в канале на 24 ч"]
+
+
+def test_other_system_messages_not_forwarded(notif):
+    n, sent = notif
+    asyncio.run(n.notify_message(_msg(0, "Покупатель Vasya123 подтвердил успешное выполнение заказа #ABCD1234 "
+                                          "и отправил деньги продавцу Me.")))
+    asyncio.run(n.notify_message(_msg(5, "Покупатель Vasya123 написал отзыв к заказу #ABCD1234.", author="Vasya123")))
+    assert sent == []
+    asyncio.run(n.notify_message(_msg(5, "Здравствуйте, когда будет пост?", author="Vasya123")))
+    assert len(sent) == 1 and "когда будет пост" in sent[0]
+
+
+def test_paid_reply_via_system_message_once(paid):
+    orx, out, cfg = paid
+    msg = NS(author_id=0, chat_id=777, text=PAID)
+    asyncio.run(orx.paid_from_system_message(msg))
+    asyncio.run(orx.handle_order_paid(NS(id="ABCD1234", chat_id=777, buyer_username="Vasya123")))  # основной путь
+    assert out == [(777, "Пришлите пост на @theaugustine")]
+
+
+def test_old_default_text_migrated(tmp_path):
+    import json
+    from config.settings import ConfigManager
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"order_paid_reply": {"text": "Присылайте текст рекламы на @theaugustine"}}),
+                    encoding="utf-8")
+    assert ConfigManager(path).settings.order_paid_reply.text == "Пришлите пост на @theaugustine"
+
+
+def test_old_mode_system_message_gets_system_author(monkeypatch):
+    from core import funpay_client
+    from core.event_bus import event_bus
+    got = []
+
+    async def fake_emit(name, msg):
+        got.append(msg)
+    monkeypatch.setattr(event_bus, "emit", fake_emit)
+    cl = funpay_client.FunPayClient()
+    asyncio.run(cl._emit_message_from_chat(NS(id=777, name="Vasya123", last_message_text=PAID, last_by_bot=False)))
+    asyncio.run(cl._emit_message_from_chat(NS(id=778, name="Bob", last_message_text="привет", last_by_bot=False)))
+    assert got[0].author_id == 0 and got[0].type.name == "ORDER_PURCHASED"
+    assert got[1].author_id == 778

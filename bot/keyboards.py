@@ -176,7 +176,7 @@ def kb_order_paid(s) -> InlineKeyboardMarkup:
     b.button(text=f"{_e(p.enabled)} Включено", callback_data="paid:toggle")
     b.button(text="✏️ Изменить текст", callback_data="paid:text")
     b.button(text=f"⏱ Пауза: {p.delay_sec} сек", callback_data="paid:delay")
-    b.button(text=f"{_e(s.notification_style.short_paid_messages)} Короткое уведомление об оплате",
+    b.button(text=f"{_e(s.notification_style.short_paid_messages)} Системные сообщения: только «Куплено: лот»",
              callback_data="paid:short")
     b.button(text="⬅️ Назад", callback_data="menu:automation")
     b.adjust(1)

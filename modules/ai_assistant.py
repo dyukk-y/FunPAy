@@ -69,6 +69,10 @@ async def track_message(message) -> None:
 
     if not chat_id:
         return
+    # Форк: системные сообщения FunPay — не вопрос покупателя, ИИ на них не отвечает
+    from utils.fp_system import is_system_text
+    if author_id == 0 or is_system_text(text):
+        return
 
     async with _pending_lock:
         pending = _load_pending()

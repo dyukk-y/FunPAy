@@ -19,13 +19,46 @@ _PAID_RX = re.compile(
 )
 
 
+_PAID_HEAD_RX = re.compile(
+    r"(?:Покупатель|The buyer|Покупець)\s+(?P<buyer>\S+)\s+"
+    r"(?:оплатил заказ|has paid for order|сплатив замовлення)\s+#(?P<order>[A-Za-z0-9]{8})\.?\s*",
+    re.I,
+)
+_PAID_TAIL_RX = re.compile(r"\s*\S+,\s*(?:не забудьте|do not forget|не забудьте|не забудьте)\b.*\Z", re.S | re.I)
+
+
 def parse_paid(text: str) -> Optional[Tuple[str, str, str]]:
     """→ (лот, номер заказа, покупатель) или None, если это не сообщение об оплате."""
-    m = _PAID_RX.search(text or "")
-    if not m:
+    text = (text or "").replace("\xa0", " ")
+    m = _PAID_RX.search(text)
+    if m:
+        lot = _PAID_TAIL_RX.sub("", m.group("lot")).strip().rstrip(".").strip()
+        return lot, m.group("order"), m.group("buyer")
+    # Мягкий разбор: имя в концовке может отличаться/отсутствовать
+    h = _PAID_HEAD_RX.search(text)
+    if not h:
         return None
-    lot = m.group("lot").strip().rstrip(".").strip()
-    return lot, m.group("order"), m.group("buyer")
+    rest = _PAID_TAIL_RX.sub("", text[h.end():]).strip().rstrip(".").strip()
+    return rest, h.group("order").upper(), h.group("buyer")
+
+
+def message_type_name(text: str) -> str:
+    """Тип сообщения FunPay по тексту (как FunPayAPI): NON_SYSTEM, ORDER_PURCHASED, NEW_FEEDBACK…"""
+    try:
+        from types import SimpleNamespace
+        from FunPayAPI.types import Message
+        return Message.get_message_type(SimpleNamespace(text=text)).name
+    except Exception:
+        return "NON_SYSTEM"
+
+
+def is_system_text(text: str) -> bool:
+    """Текст — системное сообщение FunPay (оплата, подтверждение, отзыв, возврат…)."""
+    if not text:
+        return False
+    if parse_paid(text) or parse_confirmed(text):
+        return True
+    return message_type_name(text) not in ("NON_SYSTEM", "DISCORD", "DEAR_VENDORS")
 
 
 _CONFIRMED_RX = re.compile(

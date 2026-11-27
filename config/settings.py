@@ -313,7 +313,7 @@ class OrderConfirmReplySettings(BaseModel):
 class OrderPaidReplySettings(BaseModel):
     """Автоответ покупателю сразу после оплаты заказа (форк)."""
     enabled: bool = True
-    text: str = "Присылайте текст рекламы на @theaugustine"
+    text: str = "Пришлите пост на @theaugustine"
     delay_sec: int = 3                    # пауза, чтобы ответ пришёл после системного сообщения FunPay
 
 
@@ -532,6 +532,11 @@ class ConfigManager:
                     username=settings.funpay.username,
                 )]
                 settings.funpay.active_index = 0
+                need_save = True
+
+            # Форк: старый текст ответа после оплаты по умолчанию → новый
+            if settings.order_paid_reply.text.strip() == "Присылайте текст рекламы на @theaugustine":
+                settings.order_paid_reply.text = OrderPaidReplySettings().text
                 need_save = True
 
             # Версия в конфиге — информационная, всегда равна версии кода
