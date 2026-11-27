@@ -234,6 +234,9 @@ async def on_paid(order) -> None:
         order_id = str(getattr(order, "id", "") or "")
         if not order_id:
             return
+        if not ad_duration.is_ad_lot(str(getattr(order, "description", "") or "")):
+            logger.info(f"ad_orders: заказ #{order_id} — не реклама, обычный путь")
+            return
         with _lock:
             d = _load()
             if order_id in d:
@@ -323,6 +326,11 @@ async def set_duration(order_id: str, hours: int, unit: str = "") -> Tuple[str, 
     if not unit:
         unit = "day" if hours > 0 and hours % 24 == 0 and hours >= 24 * 7 else "hour"
     update(order_id, hours=int(hours), unit=unit, dur_source="указали вы")
+    try:
+        from modules.ad_autopost import on_duration_set
+        on_duration_set(order_id)
+    except Exception as ex:
+        logger.debug(f"ad_orders: on_duration_set: {ex}")
     if e.get("status") == NEED_DURATION and e.get("link"):
         return await attach_link(order_id, e["link"])
     return "ok", ""

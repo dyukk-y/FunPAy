@@ -375,3 +375,29 @@ def test_question_not_added_and_trailing_done(env):
     assert "Текст рекламы\nвторая строка" in preview and "когда выйдет" not in preview and "«да»" in preview
     env.buyer("да")
     assert env.bot.channel_posts()[0][2] == "Текст рекламы\nвторая строка"
+
+
+def test_duration_set_after_publish_schedules_delete(env):
+    env.pay("DUR00001", "Пост в канале")               # срока в лоте нет
+    env.buyer("Текст"); env.buyer("готово"); env.buyer("да")
+    assert "укажите его" in env.admin[-1]
+    e = env.ad.get("DUR00001")
+    assert e["post"]["stage"] == "published" and "delete_at" not in e["post"]
+    status, text = asyncio.run(env.ad.set_duration("DUR00001", 48))
+    assert status == "sent" and "по истечении 48 часов" in fp_texts(env)[-1]
+    e = env.ad.get("DUR00001")
+    assert abs(e["post"]["delete_at"] - e["post"]["published_ts"] - 48 * 3600) < 2
+
+
+def test_non_ad_order_goes_usual_way(env):
+    from config.settings import OrderPaidReplySettings, config_manager
+    saved = config_manager.settings.order_paid_reply
+    config_manager.settings.order_paid_reply = OrderPaidReplySettings(delay_sec=0, text="Спасибо за покупку!")
+    try:
+        order = NS(id="KEY00001", chat_id=777, buyer_username="Vasya", price=100, description="Steam ключ Cyberpunk")
+        env.run(env.orx.handle_order_paid(order))
+        assert env.ad.get("KEY00001") is None                       # не реклама — пост не собираем
+        assert fp_texts(env) == ["Спасибо за покупку!"]             # обычный ответ после оплаты
+        assert not any("Куплена реклама" in t for t in env.admin)
+    finally:
+        config_manager.settings.order_paid_reply = saved

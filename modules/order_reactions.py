@@ -206,7 +206,9 @@ async def handle_order_paid(order) -> None:
         logger.debug(f"ad_orders: {e}")
     try:
         cfg = config_manager.settings.order_paid_reply
-        if config_manager.settings.ad_post.active() and config_manager.settings.ad_flow.enabled:
+        from utils.ad_duration import is_ad_lot
+        if (config_manager.settings.ad_post.active() and config_manager.settings.ad_flow.enabled
+                and is_ad_lot(str(getattr(order, "description", "") or ""))):
             return  # инструкцию покупателю отправит автопубликация (modules/ad_autopost.py)
         if not cfg.enabled or not (cfg.text or "").strip():
             return

@@ -308,7 +308,7 @@ async def _pull_from_history(e: dict) -> Optional[Tuple[List[str], List[str]]]:
         if aid == own or aid == 0 or is_system_text(t):
             break
         if getattr(m, "image_link", None):
-            images.insert(0, m.image_link)
+            images.insert(0, _abs_url(m.image_link))
         elif t and not _is_question(t) and not _is(_DONE | _YES | _RESET, t):
             texts.insert(0, t)
     if len(images) > MAX_IMAGES:
@@ -317,6 +317,18 @@ async def _pull_from_history(e: dict) -> Optional[Tuple[List[str], List[str]]]:
     if images or sum(len(t) for t in texts) >= 60:
         return texts, images
     return None
+
+
+def _abs_url(url: Optional[str]) -> Optional[str]:
+    """Ссылка на фото из чата FunPay → полный адрес."""
+    if not url:
+        return None
+    url = url.strip()
+    if url.startswith("//"):
+        return "https:" + url
+    if url.startswith("/"):
+        return "https://funpay.com" + url
+    return url
 
 
 def _is_question(text: str) -> bool:
@@ -394,7 +406,7 @@ async def _handle_buyer(e: dict, message) -> None:
         return
     p["seen"] = (p["seen"] + [key])[-300:]
     text = (getattr(message, "text", "") or "").strip()
-    image = getattr(message, "image_link", None)
+    image = _abs_url(getattr(message, "image_link", None))
     stage = p.get("stage")
     has_content = bool(post_text(p) or p["images"])
 
@@ -768,6 +780,22 @@ async def _fail(order_id: str, reason: str) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 # Управление опубликованным постом
 # ──────────────────────────────────────────────────────────────────────────────
+
+def on_duration_set(order_id: str) -> None:
+    """Срок указали после публикации — досчитываем, когда удалить пост."""
+    e = ad.get(order_id)
+    if not e:
+        return
+    p = _post(e)
+    d = _duration(e)
+    if p.get("stage") != PUBLISHED or p.get("deleted") or not d:
+        return
+    if d.forever or d.hours <= 0:
+        p.pop("delete_at", None)
+    elif cfg().delete_after_expiry:
+        p["delete_at"] = p.get("published_ts", time.time()) + d.hours * 3600
+    _save_post(order_id, p)
+
 
 async def delete_post(order_id: str) -> Tuple[bool, str]:
     e = ad.get(order_id)

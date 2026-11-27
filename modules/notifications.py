@@ -37,6 +37,11 @@ def set_bot(bot: Bot) -> None:
     _bot_ref = bot
 
 
+def _is_ad_order(order) -> bool:
+    from utils.ad_duration import is_ad_lot
+    return is_ad_lot(str(getattr(order, "description", None) or getattr(order, "title", "") or ""))
+
+
 def _all_recipients() -> List[int]:
     s = config_manager.settings.telegram
     return list(set(s.admin_ids + s.manager_ids))
@@ -264,7 +269,8 @@ async def notify_message(message) -> None:
             from utils.fp_system import is_system_text, parse_paid
             if author_id == 0 or is_system_text(msg_text):
                 paid = parse_paid(msg_text)
-                if paid and config_manager.settings.ad_flow.enabled:
+                from utils.ad_duration import is_ad_lot
+                if paid and config_manager.settings.ad_flow.enabled and is_ad_lot(paid[0]):
                     # Вместо «Куплено: лот» приходит карточка заказа рекламы (modules/ad_orders.py)
                     logger.info(f"📨 оплата {paid[1]}: уведомление — карточкой заказа рекламы")
                     return
@@ -310,7 +316,7 @@ async def notify_message(message) -> None:
 async def notify_new_order(order) -> None:
     if not config_manager.settings.notifications.new_orders:
         return
-    if config_manager.settings.ad_flow.enabled:
+    if config_manager.settings.ad_flow.enabled and _is_ad_order(order):
         return  # всё о заказе — в одной карточке «📢 Куплена реклама» (modules/ad_orders.py)
     style = config_manager.settings.notification_style
     title    = _html.escape(str(getattr(order, "description", None) or getattr(order, "title", "?")))
@@ -337,7 +343,7 @@ async def notify_new_order(order) -> None:
 async def notify_order_paid(order) -> None:
     if not config_manager.settings.notifications.order_paid:
         return
-    if config_manager.settings.ad_flow.enabled:
+    if config_manager.settings.ad_flow.enabled and _is_ad_order(order):
         return  # всё о заказе — в одной карточке «📢 Куплена реклама» (modules/ad_orders.py)
     style    = config_manager.settings.notification_style
     client   = accounts_manager.client_for(order)
