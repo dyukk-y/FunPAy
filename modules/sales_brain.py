@@ -686,6 +686,16 @@ def learn_now() -> Optional[Tuple[int, int]]:
 async def _learner_loop() -> None:
     await asyncio.sleep(120)
     loop = asyncio.get_running_loop()
+    # Переписки ещё нет (первый запуск или хостинг стёр data/) — сами изучаем последние чаты
+    try:
+        empty = not _query("SELECT 1 FROM chats LIMIT 1")
+        from core.funpay_client import accounts_manager
+        if empty and cfg().collect and accounts_manager.connected_clients():
+            logger.info("🧠 Переписка ещё не изучена — читаю последние чаты FunPay в фоне…")
+            res = await import_history()
+            logger.info(f"🧠 {re.sub(r'<[^>]+>', '', res)}")
+    except Exception as e:
+        logger.warning(f"sales_brain: авто-изучение переписки: {e}")
     while True:
         try:
             res = await loop.run_in_executor(None, learn_now)

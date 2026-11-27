@@ -422,3 +422,30 @@ def test_split_long_funpay_message():
     assert len(chunks) >= 3 and all(len(c) <= 1800 for c in chunks)
     assert FunPayClient._split_message("a\nb") == ["a\nb"]
     assert len(FunPayClient._split_message("\n".join(["x"] * 45))) == 3
+
+
+def test_confirm_stage_ignores_thanks_and_questions(env):
+    env.pay("CNF00001", "Пост 24ч")
+    env.buyer("Наш пост"); env.buyer("готово")
+    env.buyer("Спасибо")
+    env.buyer("А во сколько выйдет?")
+    assert "напишите «да»" in fp_texts(env)[-1]
+    env.buyer("Хорошо")                                    # «хорошо» = согласие
+    assert env.bot.channel_posts()[0][2] == "Наш пост"
+
+
+def test_reset_while_queued(env):
+    env.pay("QQ000001", "Реклама 1/24")
+    env.buyer("Первый"); env.buyer("готово"); env.buyer("да")
+    env.pay("QQ000002", "Реклама 1/24", chat=888, buyer="Bob")
+    env.buyer("Второй", chat=888, author="Bob"); env.buyer("готово", chat=888, author="Bob")
+    env.buyer("да", chat=888, author="Bob")
+    assert env.ad.get("QQ000002")["post"]["stage"] == "queued"
+    env.buyer("заново", chat=888, author="Bob")
+    assert env.ad.get("QQ000002")["post"]["stage"] == "collect" and "отменил" in env.acc.sent[-1][1]
+    env.buyer("Второй исправленный", chat=888, author="Bob"); env.buyer("готово", chat=888, author="Bob")
+    env.buyer("да", chat=888, author="Bob")
+    e = env.ad.get("QQ000002")
+    env.clock["t"] = e["post"]["publish_at"] + 1
+    env.run(env.ap._tick())
+    assert env.bot.channel_posts()[-1][2] == "Второй исправленный"

@@ -66,7 +66,8 @@ _DONE = {"готово", "готов", "готова", "все", "всё", "эт
          "отправила", "всё отправил", "все отправил", "всё отправила", "все отправила", "го", "finish"}
 _YES = {"да", "верно", "все верно", "всё верно", "ок", "ok", "окей", "подтверждаю", "публикуйте", "публикуй",
         "+", "давай", "да публикуйте", "да все верно", "да всё верно", "отлично", "супер", "yes", "y", "ага", "угу",
-        "да верно", "все ок", "всё ок", "да ок"}
+        "да верно", "все ок", "всё ок", "да ок", "хорошо", "ладно", "конечно", "можно", "размещайте",
+        "выкладывайте", "публикуем", "да публикуй", "да давай", "все отлично", "всё отлично", "идеально"}
 _RESET = {"заново", "сначала", "нет", "сброс", "отмена", "исправить", "не то", "по новой", "нет заново",
           "начать заново", "переделать", "no"}
 
@@ -165,9 +166,10 @@ def _orders_in_chat(chat_id) -> List[dict]:
 
 
 def buyer_order_for_chat(chat_id) -> Optional[dict]:
-    """Заказ, по которому покупатель сейчас присылает пост (самый ранний)."""
+    """Заказ, по которому покупатель сейчас присылает пост (самый ранний).
+    Посты в очереди / на проверке тоже: покупатель может написать «заново»."""
     for e in _orders_in_chat(chat_id):
-        if _post(e).get("stage") in ACTIVE_BUYER_STAGES:
+        if _post(e).get("stage") in ACTIVE_BUYER_STAGES + (QUEUED, APPROVAL):
             return e
     return None
 
@@ -426,6 +428,19 @@ async def _handle_buyer(e: dict, message) -> None:
     stage = p.get("stage")
     has_content = bool(post_text(p) or p["images"])
 
+    # Пост уже в очереди / на проверке: можно только начать заново, остальное — обычная переписка
+    if stage in (QUEUED, APPROVAL):
+        if text and not image and _is(_RESET, text):
+            p.update(texts=[], images=[], stage=COLLECT, stage_ts=time.time(), acked=False, reminded=False)
+            p.pop("publish_at", None)
+            _save_post(oid, p)
+            await ad._send_to_buyer(e, "Хорошо, публикацию отменил 🙂 Пришлите новый текст поста (и фото, если "
+                                       "нужно), затем напишите «готово».")
+            await _notify_admin(f"🔄 Покупатель по заказу #{oid} попросил переделать пост — собираю заново.", None)
+        else:
+            _save_post(oid, p)
+        return
+
     # «Я уже отправил выше» — берём текст из истории чата
     if text and not image and not has_content and stage == COLLECT and _ABOVE.search(text) and len(text) <= 80:
         found = await _pull_from_history(e)
@@ -479,6 +494,15 @@ async def _handle_buyer(e: dict, message) -> None:
             p.update(stage=APPROVAL if cfg().require_approval else READY, stage_ts=time.time())
             _save_post(oid, p)
             _spawn(request_publish(oid))
+            return
+        if stage == CONFIRM and (_is_ack(text) or _is_question(text)):
+            # «Спасибо», «а во сколько выйдет?» — не правка поста
+            _save_post(oid, p)
+            if not p.get("confirm_hint"):
+                p["confirm_hint"] = True
+                _save_post(oid, p)
+                await ad._send_to_buyer(e, "Если пост верный — напишите «да», и я сразу опубликую 🙂 "
+                                           "Чтобы изменить — «заново».")
             return
 
     # Содержимое поста
