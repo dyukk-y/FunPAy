@@ -71,6 +71,8 @@ def _save(d: Dict[str, dict]) -> None:
         tmp = STATE_PATH.with_suffix(".tmp")
         tmp.write_text(json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
         os.replace(tmp, STATE_PATH)
+        from utils import tg_backup
+        tg_backup.mark_dirty()   # копия в Telegram — на случай, если хостинг сотрёт data/
     except Exception as e:
         logger.warning(f"ad_orders: не удалось сохранить: {e}")
 

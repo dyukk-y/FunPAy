@@ -557,7 +557,9 @@ def _main_safe() -> None:
             try:
                 from utils import branding
                 from modules import ad_autopost as _ap
-                _bg = [asyncio.create_task(branding.apply(bot)), asyncio.create_task(_ap.check_channel_on_start())]
+                from utils import tg_backup
+                _bg = [asyncio.create_task(branding.apply(bot)), asyncio.create_task(_ap.check_channel_on_start()),
+                       asyncio.create_task(tg_backup.start())]
             except Exception as e:
                 logger.debug(f"branding/channel: {e}")
             # Если прошлый запуск закончился сбоем — сообщаем админам причину
